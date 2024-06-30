@@ -139,7 +139,7 @@ const transporter = nodemailer.createTransport({
 
 // Send Registration Email with Token Function
 const sendRegistrationEmail = (email, name, token) => {
-  const link = `http://13.235.51.178:3001/success?token=${token}`;
+  const link = `http://3.109.132.100/success?token=${token}`;
   const mailOptions = {
     from: 'thinkailabs111@gmail.com',
     to: email,
@@ -325,7 +325,7 @@ app.post('/api/addUser', authenticateToken, authorizeRoles('ADMIN'), async (req,
     await newUser.save();
 
     const token = jwt.sign({ email, role, userId: newUser._id }, secretKey, { expiresIn: '3d' });
-    const resetLink = `http://13.235.51.178:3001/reset-password?token=${token}`;
+    const resetLink = `http://3.109.132.100/reset-password?token=${token}`;
 
     sendResetEmail(email, resetLink);
 
@@ -515,7 +515,7 @@ app.post('/api/projects', async (req, res) => {
       { expiresIn: '1h' }
     );
 
-    const link = `http://13.235.51.178:3001/project?token=${token}`;
+    const link = `http://3.109.132.100/project?token=${token}`;
     const emailText = `Dear Project Manager,\n\nA new project has been created.\n\nProject Name: ${name}\nDescription: ${description}\n\nPlease click the following link to view the project details: ${link}\n\nBest Regards,\nTeam`;
     sendEmail(projectManager, 'New Project Created', emailText);
 
