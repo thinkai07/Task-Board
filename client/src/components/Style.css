@@ -1,0 +1,24 @@
+.react-kanban-column {
+  padding: 15px;
+  border-radius: 20px;
+  background-color: #eee;
+  margin: 5px;
+}
+.react-kanban-card {
+  box-sizing: border-box;
+  max-width: 250px;
+  min-width: 300px;
+}
+.react-kanban-card__title {
+border-bottom: 70px  #eee;
+padding-bottom: 5px;
+font-weight: bold;
+display: flex;
+justify-content: space-between;
+}
+
+
+
+
+
+
