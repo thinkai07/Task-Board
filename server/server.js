@@ -25,7 +25,7 @@ const Schema = mongoose.Schema;
 
 const usedTokenSchema = new Schema({
   token: String,
-  createdAt: { type: Date, expires: '1d', default: Date.now } // Token expires after 1 hour
+  createdAt: { type: Date, expires: '1h', default: Date.now } // Token expires after 1 hour
 });
 const UsedToken = mongoose.model('UsedToken', usedTokenSchema);
 
@@ -38,6 +38,13 @@ const organizationSchema = new Schema({
   projects: [{ type: Schema.Types.ObjectId, ref: 'Project' }]
 });
 
+// // Project schema
+// const projectSchema = new Schema({
+//   id: String,
+//   name: String,
+//   teams: [{ type: Schema.Types.ObjectId, ref: 'Team' }],
+//   tasks: [{ type: Schema.Types.ObjectId, ref: 'Task' }]
+// });
 
 const projectSchema = new Schema({
   id: String,
@@ -101,17 +108,34 @@ module.exports = {
   Card
 };
 
+const tempOrganizationSchema = new Schema({
+  name: String,
+  email: String,
+  projects: [{ type: Schema.Types.ObjectId, ref: 'Project' }]
+});
 
+const TempOrganization = mongoose.model('TempOrganization', tempOrganizationSchema);
+
+const tempUserSchema = new Schema({
+  name: String,
+  email: String,
+  password: String,
+  role: { type: String },
+  organization: { type: Schema.Types.ObjectId, ref: 'TempOrganization' }
+});
+const TempUser = mongoose.model('TempUser', tempUserSchema);
+ 
 
 
 // Create a transporter
 const transporter = nodemailer.createTransport({
   service: 'Gmail',
-  auth: { 
+  auth: {
     user: 'thinkailabs111@gmail.com',
     pass: 'zwvu hhtq cavs zkmr'
   }
 });
+
 
 
 // Send Registration Email with Token Function
@@ -133,57 +157,19 @@ const sendRegistrationEmail = (email, name, token) => {
   });
 };
 
-// Organization register
+
 app.post('/register', async (req, res) => {
   const { organizationName, organizationEmail, userName, userEmail, userPassword } = req.body;
 
   try {
-    // Check if email already exists
-    const existingUser = await User.findOne({ email: userEmail });
+    // Check if the email is already registered
+    const existingUser = await TempUser.findOne({ email: userEmail });
     if (existingUser) {
-      return res.status(400).json({ message: 'Email already exists' });
+      return res.status(400).json({ message: 'Email is already registered' });
     }
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(userPassword, 10);
-
-    // Generate token with registration details
-    const token = jwt.sign(
-      { organizationName, organizationEmail, userName, userEmail, hashedPassword, role: 'ADMIN' },
-      secretKey,
-      { expiresIn: '1h' }
-    );
-
-    // Save token in used tokens collection
-    const usedToken = new UsedToken({ token });
-    await usedToken.save();
-
-    // Send registration email with token
-    sendRegistrationEmail(userEmail, userName, token);
-
-    res.status(201).json({ message: 'Registration email sent. Please check your inbox to complete the registration.' });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Error registering organization and user' });
-  }
-});
-
-// Validate email token and store data permanently
-app.get('/validate-email', async (req, res) => {
-  const { token } = req.query;
-
-  try {
-    const decoded = jwt.verify(token, secretKey);
-    const { organizationName, organizationEmail, userName, userEmail, hashedPassword, role } = decoded;
-
-    // Check if token is already used
-    const usedToken = await UsedToken.findOne({ token });
-    if (!usedToken) {
-      return res.status(400).json({ message: 'Invalid or expired token' });
-    }
-
-    // Create the organization
-    const newOrganization = new Organization({
+    // Create the organization first
+    const newOrganization = new TempOrganization({
       name: organizationName,
       email: organizationEmail,
       projects: []
@@ -191,21 +177,124 @@ app.get('/validate-email', async (req, res) => {
 
     await newOrganization.save();
 
-    // Create the user with the organization reference
-    const newUser = new User({
+    // Hash the password before saving
+    const hashedPassword = await bcrypt.hash(userPassword, 10);
+
+    // Create the user with the organization reference and role 'admin'
+    const newUser = new TempUser({
       name: userName,
       email: userEmail,
-      password: hashedPassword,
+      password: hashedPassword, // Save the hashed password
       organization: newOrganization._id,
-      role: role
+      role: 'ADMIN'
     });
 
     await newUser.save();
 
-    // Delete used token
-    await UsedToken.deleteOne({ token });
+    // Generate token
+    const token = jwt.sign(
+      { email: userEmail, role: 'ADMIN', userId: newUser._id },
+      secretKey,
+      { expiresIn: '3d' }
+    );
 
-    res.status(200).json({ message: 'Email validated successfully. Organization and user created.' });
+    // Store the token in UsedToken collection
+    const usedToken = new UsedToken({ token });
+    await usedToken.save();
+
+    // Send registration email with token
+    sendRegistrationEmail(userEmail, userName, token);
+
+    res.status(201).json({ message: 'Organization and user registered successfully', organization: newOrganization, user: newUser });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error registering organization and user' });
+  }
+});
+
+
+// // Organization register
+// app.post('/register', async (req, res) => {
+//   const { organizationName, organizationEmail, userName, userEmail, userPassword } = req.body;
+
+//   try {
+//     // Create the organization first
+//     const newOrganization = new TempOrganization({
+//       name: organizationName,
+//       email: organizationEmail,
+//       projects: []
+//     });
+
+//     await newOrganization.save();
+
+//     // Hash the password before saving
+//     const hashedPassword = await bcrypt.hash(userPassword, 10);
+
+//     // Create the user with the organization reference and role 'admin'
+//     const newUser = new TempUser({
+//       name: userName,
+//       email: userEmail,
+//       password: hashedPassword, // Save the hashed password
+//       organization: newOrganization._id,
+//       role: 'ADMIN'
+//     });
+
+//     await newUser.save();
+
+//     // Generate token
+//     const token = jwt.sign(
+//       { email: userEmail, role: 'ADMIN', userId: newUser._id },
+//       secretKey,
+//       { expiresIn: '1h' }
+//     );
+
+//     // Send registration email with token
+//     sendRegistrationEmail(userEmail, userName, token);
+
+//     res.status(201).json({ message: 'Organization and user registered successfully', organization: newOrganization, user: newUser });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Error registering organization and user' });
+//   }
+// });
+
+// Validate email token and store data permanently
+app.get('/validate-email', async (req, res) => {
+  const { token } = req.query;
+
+  try {
+    const decoded = jwt.verify(token, secretKey);
+    const { email, userId } = decoded;
+
+    const tempUser = await TempUser.findOne({ _id: userId, email });
+    const tempOrganization = await TempOrganization.findOne({ _id: tempUser.organization });
+
+    if (tempUser && tempOrganization) {
+      const newOrganization = new Organization({
+        name: tempOrganization.name,
+        email: tempOrganization.email,
+        projects: tempOrganization.projects
+      });
+
+      await newOrganization.save();
+
+      const newUser = new User({
+        name: tempUser.name,
+        email: tempUser.email,
+        password: tempUser.password,
+        organization: newOrganization._id,
+        role: tempUser.role
+      });
+
+      await newUser.save();
+
+      await TempUser.deleteOne({ _id: userId });
+      await TempOrganization.deleteOne({ _id: tempOrganization._id });
+
+      res.status(200).json({ message: 'Email validated successfully' });
+    } else {
+      res.status(400).json({ message: 'Invalid token or user does not exist' });
+    }
   } catch (error) {
     console.error('Error validating token:', error);
     res.status(400).json({ message: 'Invalid or expired token' });
@@ -434,6 +523,7 @@ app.post('/resetPassword', async (req, res) => {
 
 
 // // Create a new project
+
 // Function to send emails
 const sendEmail = (email, subject, text) => {
   const mailOptions = {
@@ -482,7 +572,7 @@ app.post('/api/projects', async (req, res) => {
       { expiresIn: '1h' }
     );
 
-    const link = `http://3.109.132.100/project?token=${token}`;
+    const link = `http:/3.109.132.100/project?token=${token}`;
     const emailText = `Dear Project Manager,\n\nA new project has been created.\n\nProject Name: ${name}\nDescription: ${description}\n\nPlease click the following link to view the project details: ${link}\n\nBest Regards,\nTeam`;
     sendEmail(projectManager, 'New Project Created', emailText);
 
@@ -533,6 +623,7 @@ app.get('/api/projects/:organizationId', authenticateToken, async (req, res) => 
   }
 });
 
+
 // Delete a project
 app.delete('/api/projects/:projectId', authenticateToken, async (req, res) => {
   try {
@@ -581,6 +672,8 @@ app.put('/api/projects/:projectId', authenticateToken, async (req, res) => {
   }
 });
 
+
+
 app.put('/api/projects/:projectId', authenticateToken, async (req, res) => {
   try {
     const userEmail = req.user.email;
@@ -619,6 +712,87 @@ app.put('/api/projects/:projectId', authenticateToken, async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 });
+
+app.delete('/api/projects/:projectId', authenticateToken, async (req, res) => {
+  try {
+    const userEmail = req.user.email;
+    const projectId = req.params.projectId;
+
+    // Fetch the authenticated user's document
+    const user = await User.findOne({ email: userEmail });
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if the project exists in user's own projects
+    let projectIndex = user.projects.findIndex(proj => proj._id.toString() === projectId);
+
+    if (projectIndex === -1) {
+      // If not found, check projects from activePeople
+      const users = await User.find({ 'projects.activePeople': userEmail });
+
+      for (let activeUser of users) {
+        projectIndex = activeUser.projects.findIndex(proj => proj._id.toString() === projectId);
+        if (projectIndex !== -1) {
+          // Remove the project from activeUser's projects array
+          activeUser.projects.splice(projectIndex, 1);
+          await activeUser.save();
+          return res.json({ message: 'Project deleted successfully' });
+        }
+      }
+    } else {
+      // Remove the project from user's projects array
+      user.projects.splice(projectIndex, 1);
+      await user.save();
+      return res.json({ message: 'Project deleted successfully' });
+    }
+
+    // If project is still not found, return 404
+    return res.status(404).json({ message: 'Project not found' });
+
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+
+
+app.get('/api/projects/:projectId/teams', authenticateToken, async (req, res) => {
+  const { projectId } = req.params;
+
+  try {
+    const project = await Project.findById(projectId).populate({
+      path: 'teams',
+      populate: {
+        path: 'users.user',
+        select: 'email role' // Select only email and role fields
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    // Transform the data to match the frontend requirements
+    const teams = project.teams.map(team => ({
+      name: team.name,
+      members: team.users.map(user => ({
+        email: user.user.email,
+        role: user.role
+      }))
+    }));
+
+    res.status(200).json({ teams });
+  } catch (error) {
+    console.error('Error fetching teams:', error);
+    res.status(500).json({ message: 'Error fetching teams' });
+  }
+});
+
+
+
+
 
 
 
@@ -758,9 +932,7 @@ app.put('/api/projects/:projectId/tasks/:taskId', authenticateToken, async (req,
 
 
 
-//cards
 
-//create card
 app.post('/api/tasks/:taskId/cards', authenticateToken, async (req, res) => {
   const { taskId } = req.params;
   const { name, description, assignedTo } = req.body; // Accept assignedTo in request body
@@ -790,6 +962,7 @@ app.post('/api/tasks/:taskId/cards', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Error creating card' });
   }
 });
+
 
 app.get('/api/tasks/:taskId/cards', authenticateToken, async (req, res) => {
   const { taskId } = req.params;
@@ -888,7 +1061,7 @@ app.put('/api/cards/:cardId/status', authenticateToken, async (req, res) => {
   }
 });
 
-// // Move a card to a different task
+// Move a card to a different task
 app.put('/api/cards/:cardId/move', authenticateToken, async (req, res) => {
   const { cardId } = req.params;
   const { sourceTaskId, destinationTaskId } = req.body;
@@ -934,7 +1107,6 @@ app.put('/api/cards/:cardId/move', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Error moving card' });
   }
 });
-
 
 
 
@@ -1053,82 +1225,41 @@ app.get('/api/projects/:projectId/teams/:teamName/users', authenticateToken, asy
 });
 
 // Delete user from team
+// Endpoint to delete a user from a team
 app.delete('/api/projects/:projectId/teams/:teamName/users', authenticateToken, async (req, res) => {
   const { projectId, teamName } = req.params;
   const { email } = req.body;
 
   try {
-    const project = await Project.findById(projectId).populate({
-      path: 'teams',
-      populate: {
-        path: 'users.user',
-        model: 'User'
-      }
-    });
-
+    const project = await Project.findById(projectId).populate('teams');
     if (!project) {
       return res.status(404).json({ message: 'Project not found' });
     }
 
-    const team = project.teams.find(team => team.name === teamName);
+    const team = project.teams.find(t => t.name === teamName);
     if (!team) {
       return res.status(404).json({ message: 'Team not found' });
     }
 
-    const userIndex = team.users.findIndex(user => user.user && user.user.email === email);
-    if (userIndex === -1) {
+    const user = await User.findOne({ email });
+    if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Remove the user from the team
-    team.users.splice(userIndex, 1);
+    const userIndex = team.users.findIndex(u => u.user.toString() === user._id.toString());
+    if (userIndex === -1) {
+      return res.status(404).json({ message: 'User not found in the team' });
+    }
 
-    await project.save(); // Save the project to update the teams array
+    team.users.splice(userIndex, 1);
+    await team.save();
 
     res.status(200).json({ message: 'User removed from team successfully' });
   } catch (error) {
-    console.error('Error deleting user from team:', error);
-    res.status(500).json({ message: 'Error deleting user from team' });
+    console.error('Error removing user from team:', error);
+    res.status(500).json({ message: 'Error removing user from team' });
   }
 });
-
-
-app.get('/api/projects/:projectId/teams', authenticateToken, async (req, res) => {
-  const { projectId } = req.params;
-
-  try {
-    const project = await Project.findById(projectId).populate({
-      path: 'teams',
-      populate: {
-        path: 'users.user',
-        select: 'email role' // Select only email and role fields
-      }
-    });
-
-    if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
-
-    // Transform the data to match the frontend requirements
-    const teams = project.teams.map(team => ({
-      name: team.name,
-      members: team.users.map(user => ({
-        email: user.user.email,
-        role: user.role
-      }))
-    }));
-
-    res.status(200).json({ teams });
-  } catch (error) {
-    console.error('Error fetching teams:', error);
-    res.status(500).json({ message: 'Error fetching teams' });
-  }
-});
-
-
-
-
-
 
 
 
@@ -1148,3 +1279,27 @@ app.listen(port, () => {
 });
 
 module.exports = app;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

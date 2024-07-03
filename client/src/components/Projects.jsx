@@ -109,11 +109,13 @@ const Projects = () => {
         setNewCardErrors({ ...newCardErrors, description: false });
     };
 
+  
     const handleEmailChange = (event, index) => {
         const updatedCards = [...cards];
         updatedCards[index].projectManager = event.target.value;
         setCards(updatedCards);
         setNewCardErrors({ ...newCardErrors, email: false });
+        setProjectManagerError(false);  // Add this line
     };
 
 
@@ -151,7 +153,6 @@ const Projects = () => {
         setNewCardErrors({ name: false, description: false, email: false });
     };
 
-
     const handleSaveNewCard = async (index) => {
         const card = cards[index];
         const newErrors = { ...newCardErrors };
@@ -175,6 +176,28 @@ const Projects = () => {
             return;
         }
 
+        // Check if email is part of the organization
+        try {
+            const response = await axios.get(`${server}/api/users/search`, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+                params: { email: card.projectManager, organizationId: organizationId },
+            });
+
+            if (response.data.users.length === 0) {
+                setNewCardErrors({ ...newErrors, email: true });
+                setProjectManagerError(true);
+                return;
+            }
+        } catch (error) {
+            console.error("Error checking project manager email:", error);
+            setNewCardErrors({ ...newErrors, email: true });
+            setProjectManagerError(true);
+            return;
+        }
+
+        // If we've made it here, the email is valid and part of the organization
         try {
             const response = await axios.post(
                 `${server}/api/projects`,
@@ -426,8 +449,13 @@ const Projects = () => {
                                 {newCardErrors.email && (
                                     <span className="text-red-500">This field is required</span>
                                 )}
-                                {projectManagerError && (
-                                    <span className="text-red-500">Email is not part of the organization</span>
+
+                                {newCardErrors.email && (
+                                    <span className="text-red-500">
+                                        {projectManagerError
+                                            ? "Email is not part of the organization"
+                                            : "This field is required"}
+                                    </span>
                                 )}
                                 {emailSuggestions.length > 0 && card.projectManager.length > 0 && (
                                     <ul className="absolute z-10 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-lg max-h-60 overflow-auto">
@@ -492,6 +520,12 @@ const Projects = () => {
                                                 {card.description}
                                             </span>
                                         )}
+                                    </div>
+                                    <div className="flex items-center mt-2">
+                                        <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center rounded-full">
+                                            {card.projectManager.charAt(0).toUpperCase()}
+                                        </div>
+                                        <span className="ml-2 text-gray-700">{card.projectManager}</span>
                                     </div>
                                 </div>
 
