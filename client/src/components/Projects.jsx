@@ -30,6 +30,8 @@ const Projects = () => {
     const [projectManager, setProjectManager] = useState("");
     const [emailSuggestions, setEmailSuggestions] = useState([]);
 
+    const [isAddingCard, setIsAddingCard] = useState(false);
+
 
     const [renameInputError, setRenameInputError] = useState(false);
     const [descriptionInputError, setDescriptionInputError] = useState(false);
@@ -55,19 +57,19 @@ const Projects = () => {
 
     const fetchProjects = async (organizationId) => {
         try {
-          const response = await axios.get(
-            `${server}/api/projects/${organizationId}`,
-            {
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-              },
-            }
-          );
-          setCards(response.data.projects);
+            const response = await axios.get(
+                `${server}/api/projects/${organizationId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${localStorage.getItem("token")}`,
+                    },
+                }
+            );
+            setCards(response.data.projects);
         } catch (error) {
-          console.error("Error fetching projects:", error);
+            console.error("Error fetching projects:", error);
         }
-      };
+    };
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -89,28 +91,46 @@ const Projects = () => {
         }
     };
 
+
     const handleTitleChange = (event, index) => {
+        const value = event.target.value.replace(/^\s+/, '');
         const updatedCards = [...cards];
-        updatedCards[index].name = event.target.value;
+        updatedCards[index].name = value;
         setCards(updatedCards);
         setNewCardErrors({ ...newCardErrors, name: false });
     };
 
+
     const handleDescriptionChange = (event, index) => {
+        const value = event.target.value.replace(/^\s+/, '');
         const updatedCards = [...cards];
-        updatedCards[index].description = event.target.value;
+        updatedCards[index].description = value;
         setCards(updatedCards);
         setNewCardErrors({ ...newCardErrors, description: false });
     };
 
+  
     const handleEmailChange = (event, index) => {
         const updatedCards = [...cards];
         updatedCards[index].projectManager = event.target.value;
         setCards(updatedCards);
         setNewCardErrors({ ...newCardErrors, email: false });
+        setProjectManagerError(false);  // Add this line
     };
 
+
+    const isValidEmail = (email) => {
+        const re = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+        return re.test(String(email).toLowerCase());
+    };
+
+
+
     const handleAddCard = () => {
+        if (isAddingCard) {
+            return;
+        }
+
         const newCard = {
             _id: uuidv4(),
             name: "",
@@ -121,6 +141,7 @@ const Projects = () => {
         setCards((prevCards) => [...prevCards, newCard]);
         setEditableCard(newCard._id);
         setNewCardErrors({ name: false, description: false, email: false });
+        setIsAddingCard(true);
     };
 
     const handleCancelNewCard = () => {
@@ -128,29 +149,62 @@ const Projects = () => {
             prevCards.filter((card) => card._id !== editableCard)
         );
         setEditableCard(null);
+        setIsAddingCard(false);
+        setNewCardErrors({ name: false, description: false, email: false });
     };
 
     const handleSaveNewCard = async (index) => {
         const card = cards[index];
-        if (!card.name) {
-            setNewCardErrors({ ...newCardErrors, name: true });
+        const newErrors = { ...newCardErrors };
+        let hasError = false;
+
+        if (!card.name.trim()) {
+            newErrors.name = true;
+            hasError = true;
+        }
+        if (!card.description.trim()) {
+            newErrors.description = true;
+            hasError = true;
+        }
+        if (!card.projectManager || !isValidEmail(card.projectManager)) {
+            newErrors.email = true;
+            hasError = true;
+        }
+
+        if (hasError) {
+            setNewCardErrors(newErrors);
             return;
         }
-        if (!card.description) {
-            setNewCardErrors({ ...newCardErrors, description: true });
+
+        // Check if email is part of the organization
+        try {
+            const response = await axios.get(`${server}/api/users/search`, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+                params: { email: card.projectManager, organizationId: organizationId },
+            });
+
+            if (response.data.users.length === 0) {
+                setNewCardErrors({ ...newErrors, email: true });
+                setProjectManagerError(true);
+                return;
+            }
+        } catch (error) {
+            console.error("Error checking project manager email:", error);
+            setNewCardErrors({ ...newErrors, email: true });
+            setProjectManagerError(true);
             return;
         }
-        if (!card.projectManager) {
-            setNewCardErrors({ ...newCardErrors, email: true });
-            return;
-        }
+
+        // If we've made it here, the email is valid and part of the organization
         try {
             const response = await axios.post(
                 `${server}/api/projects`,
                 {
                     organizationId: organizationId,
-                    name: card.name,
-                    description: card.description,
+                    name: card.name.trim(),
+                    description: card.description.trim(),
                     projectManager: card.projectManager,
                 },
                 {
@@ -160,9 +214,11 @@ const Projects = () => {
                 }
             );
             setEditableCard(null);
+            setIsAddingCard(false);
             fetchProjects(organizationId);
         } catch (error) {
             console.error("Error creating new project:", error);
+            setIsAddingCard(false);
         }
     };
 
@@ -174,14 +230,15 @@ const Projects = () => {
         setRenameDialogVisible(true);
     };
 
+
     const handleRenameInputChange = (event) => {
-        setRenameInputValue(event.target.value);
-        setRenameInputError(false); // Reset error state
+        setRenameInputValue(event.target.value.replace(/^\s+/, ''));
+        setRenameInputError(false);
     };
 
     const handleDescriptionInputChange = (event) => {
-        setDescriptionInputValue(event.target.value);
-        setDescriptionInputError(false); // Reset error state
+        setDescriptionInputValue(event.target.value.replace(/^\s+/, ''));
+        setDescriptionInputError(false);
     };
 
 
@@ -233,12 +290,16 @@ const Projects = () => {
             setProjectManagerError(true);
             return;
         }
+        if (projectManagerError) {
+            return;
+        }
         try {
             const response = await axios.put(
                 `${server}/api/projects/${cards[renameIndex]._id}`,
                 {
                     name: renameInputValue,
-                    description: descriptionInputValue
+                    description: descriptionInputValue,
+                    projectManager: projectManager,
                 },
                 {
                     headers: {
@@ -264,6 +325,7 @@ const Projects = () => {
     const handleProjectManagerChange = async (event) => {
         const value = event.target.value;
         setProjectManager(value);
+        setProjectManagerError(false);
 
         if (value) {
             try {
@@ -271,17 +333,27 @@ const Projects = () => {
                     headers: {
                         Authorization: `Bearer ${localStorage.getItem("token")}`,
                     },
-                    params: { email: value },
+                    params: { email: value, organizationId: organizationId },
                 });
 
-                setEmailSuggestions(response.data.users);
+                if (response.data.users.length > 0) {
+                    setEmailSuggestions(response.data.users);
+                    setProjectManagerError(false);
+                } else {
+                    setEmailSuggestions([]);
+                    setProjectManagerError(true);
+                }
             } catch (error) {
                 console.error("Error fetching user emails:", error);
+                setEmailSuggestions([]);
+                setProjectManagerError(true);
             }
         } else {
             setEmailSuggestions([]);
+            setProjectManagerError(false);
         }
     };
+
     return (
         <div className="min-h-screen bg-light-white rounded-3xl p-8">
             <div className="flex justify-between items-center mb-4">
@@ -289,6 +361,7 @@ const Projects = () => {
                     <button
                         className="border border-blue-500 text-blue-500 py-2 px-4 rounded-full flex items-center hover:bg-blue-500 hover:text-white"
                         onClick={handleAddCard}
+                        disabled={isAddingCard}
                     >
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -316,7 +389,8 @@ const Projects = () => {
                         {editableCard === card._id ? (
                             <div >
                                 <label
-                                    className="block text-gray-700 h-3 text-sm font-bold mb-2"
+                                    className="block text-gray-700 text-sm font-bold mb-2"
+
                                     htmlFor="text"
                                 >
                                     Project Name
@@ -334,7 +408,7 @@ const Projects = () => {
                                     <span className="text-red-500">This field is required</span>
                                 )}
                                 <label
-                                    className="block text-gray-700 text-sm font-bold mb-2"
+                                    className="block text-gray-700 pt-2 text-sm font-bold mb-2"
                                     htmlFor="text"
                                 >
                                     Project Description
@@ -361,30 +435,43 @@ const Projects = () => {
                                     placeholder="Project manager email"
                                     value={card.projectManager}
                                     onChange={(event) => {
-                                        handleProjectManagerChange(event, index);
+                                        handleProjectManagerChange(event);
                                         setCards((prevCards) => {
                                             const updatedCards = [...prevCards];
                                             updatedCards[index].projectManager = event.target.value;
                                             return updatedCards;
                                         });
                                     }}
-                                    className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline${newCardErrors.email ? "border-red-500" : ""
+                                    className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${newCardErrors.email || projectManagerError ? "border-red-500" : ""
                                         }`}
                                     onClick={(e) => e.stopPropagation()}
                                 />
+                                {newCardErrors.email && (
+                                    <span className="text-red-500">This field is required</span>
+                                )}
 
-                                {emailSuggestions.length > 0 && (
-                                    <ul className="absolute bg-white border border-gray-300 mt-1 w-full rounded-md">
+                                {newCardErrors.email && (
+                                    <span className="text-red-500">
+                                        {projectManagerError
+                                            ? "Email is not part of the organization"
+                                            : "This field is required"}
+                                    </span>
+                                )}
+                                {emailSuggestions.length > 0 && card.projectManager.length > 0 && (
+                                    <ul className="absolute z-10 w-full bg-white border border-gray-300 mt-1 rounded-md shadow-lg max-h-60 overflow-auto">
                                         {emailSuggestions.map((user) => (
                                             <li
                                                 key={user._id}
-                                                className="px-4 py-2 cursor-pointer hover:bg-gray-100"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    const updatedCards = [...cards];
-                                                    updatedCards[index].projectManager = user.email;
-                                                    setCards(updatedCards);
+                                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
+                                                onClick={() => {
+                                                    setCards((prevCards) => {
+                                                        const updatedCards = [...prevCards];
+                                                        updatedCards[index].projectManager = user.email;
+                                                        return updatedCards;
+                                                    });
+                                                    setProjectManager(user.email);
                                                     setEmailSuggestions([]);
+                                                    setProjectManagerError(false);
                                                 }}
                                             >
                                                 {user.email}
@@ -393,12 +480,6 @@ const Projects = () => {
                                     </ul>
                                 )}
 
-
-
-
-                                {newCardErrors.email && (
-                                    <span className="text-red-500">This field is required</span>
-                                )}
                                 <div className="flex justify-between">
                                     <button
                                         className="bg-blue-500 text-white px-4 py-2 rounded-md mt-2"
@@ -419,89 +500,25 @@ const Projects = () => {
                             </div>
                         ) : (
                             <>
-                                <div
-                                    onClick={() => handleCardClick(card._id)}>
-                                    <div
-                                        style={{
-                                            position: "relative",
-                                            display: "block",
-                                            maxWidth: "200px",
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                display: "block",
-                                                whiteSpace: "nowrap",
-                                                overflow: "hidden",
-                                                textOverflow: "ellipsis",
-                                            }}
-                                        >
+                                <div onClick={() => handleCardClick(card._id)}>
+                                    <div className="relative group">
+                                        <span className="block truncate max-w-[200px]">
                                             {card.name}
                                         </span>
                                         {card.name.length > 20 && (
-                                            <div
-                                                style={{
-                                                    visibility: "hidden",
-                                                    width: "200px",
-                                                    backgroundColor: "black",
-                                                    color: "#fff",
-                                                    textAlign: "center",
-                                                    borderRadius: "5px",
-                                                    padding: "5px",
-                                                    position: "absolute",
-                                                    zIndex: 1,
-                                                    bottom: "125%",
-                                                    left: "50%",
-                                                    marginLeft: "-100px",
-                                                    opacity: 0,
-                                                    transition: "opacity 0.3s",
-                                                }}
-                                                className="tooltip"
-                                            >
+                                            <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
                                                 {card.name}
-                                            </div>
+                                            </span>
                                         )}
                                     </div>
-                                    <div
-                                        style={{
-                                            position: "relative",
-                                            display: "block",
-                                            maxWidth: "200px",
-                                            color: "gray",
-                                        }}
-                                    >
-                                        <span
-                                            style={{
-                                                display: "block",
-                                                whiteSpace: "nowrap",
-                                                overflow: "hidden",
-                                                textOverflow: "ellipsis",
-                                            }}
-                                        >
+                                    <div className="relative group mt-2">
+                                        <span className="block truncate max-w-[200px] text-gray-500">
                                             {card.description}
                                         </span>
                                         {card.description.length > 20 && (
-                                            <div
-                                                style={{
-                                                    visibility: "hidden",
-                                                    width: "200px",
-                                                    backgroundColor: "black",
-                                                    color: "#fff",
-                                                    textAlign: "center",
-                                                    borderRadius: "5px",
-                                                    padding: "5px",
-                                                    position: "absolute",
-                                                    zIndex: 1,
-                                                    bottom: "125%",
-                                                    left: "50%",
-                                                    marginLeft: "-100px",
-                                                    opacity: 0,
-                                                    transition: "opacity 0.3s",
-                                                }}
-                                                className="tooltip"
-                                            >
+                                            <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
                                                 {card.description}
-                                            </div>
+                                            </span>
                                         )}
                                     </div>
                                 </div>

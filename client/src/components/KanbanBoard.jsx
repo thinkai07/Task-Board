@@ -1,3 +1,4 @@
+//kanban.jsx
 import React, { useState, useRef, useEffect } from "react";
 import Board, { moveCard, moveColumn } from "@lourenci/react-kanban";
 import {
@@ -10,7 +11,7 @@ import "@lourenci/react-kanban/dist/styles.css";
 import { useParams } from "react-router-dom";
 import { server } from "../constant";
 import axios from "axios";
-// import "../components/Style.css";
+
 import { useNavigate } from "react-router-dom";
 import "../components/Style.css";
 import useTokenValidation from "./UseTockenValidation";
@@ -20,9 +21,6 @@ const initialBoard = {
   columns: [],
 };
 
-
-
-
 function KanbanBoard() {
   useTokenValidation();
   const [boardData, setBoardData] = useState(initialBoard);
@@ -31,7 +29,11 @@ function KanbanBoard() {
   const [modalType, setModalType] = useState(null);
   const containerRef = useRef(null);
   const { projectId } = useParams();
+
+  const [renameColumnError, setRenameColumnError] = useState(false);
+
   const [projectName, setProjectName] = useState("");
+  const [projectManager, setProjectManager] = useState("");
   const [newColumnModalVisible, setNewColumnModalVisible] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [showRenameConfirmation, setShowRenameConfirmation] = useState(false);
@@ -39,10 +41,14 @@ function KanbanBoard() {
   const [showRenameInput, setShowRenameInput] = useState(false);
   const [renameCardModalVisible, setRenameCardModalVisible] = useState(false);
   const [renameCardTitle, setRenameCardTitle] = useState("");
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [memberAdded, setMemberAdded] = useState(false);
+
   const [renameCardDescription, setRenameCardDescription] = useState("");
   const [selectedCardId, setSelectedCardId] = useState(null);
   const suggestionListRef = useRef(null);
   const [emailSuggestions, setEmailSuggestions] = useState([]);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
 
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [cardToDelete, setCardToDelete] = useState(null);
@@ -50,6 +56,13 @@ function KanbanBoard() {
   const [email, setEmail] = useState(""); //added
   const [team, setTeam] = useState(""); //added
   const navigate = useNavigate();
+  const [projects, setProjects] = useState([]);
+  const [user, setUser] = useState({});
+  const [renameCardErrors, setRenameCardErrors] = useState({ title: '', description: '' });
+  const [addCardErrors, setAddCardErrors] = useState({ title: '', description: '', email: '' });
+
+
+  const [newColumnError, setNewColumnError] = useState(false);
 
   const handleTeamsClick = () => {
     navigate(`/projects/${projectId}/teams`);
@@ -74,6 +87,55 @@ function KanbanBoard() {
 
     fetchUserRole();
   }, []);
+
+  useEffect(() => {
+    const fetchUserRoleAndOrganization = async () => {
+      try {
+        const response = await axios.get(`${server}/api/role`, {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        });
+        setUser({ role: response.data.role, email: response.data.email });
+        fetchProjects(response.data.organizationId);
+
+      } catch (error) {
+        console.error("Error fetching user role:", error);
+      }
+    };
+    fetchUserRoleAndOrganization();
+  }, []);
+
+  const fetchProjects = async (organizationId) => {
+    try {
+      const response = await axios.get(`${server}/api/projects/${organizationId}`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      setProjects(response.data.projects);
+      const project = response.data.projects.find(project => project._id === projectId);
+      if (project) {
+        setProjectName(project.name);
+      }
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    }
+  };
+
+  // Function to get the user object from local storage
+  const getUserFromLocalStorage = () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  };
+
+  // Inside your component
+  const userFromLocalStorage = getUserFromLocalStorage();
+  const emailFromLocalStorage = userFromLocalStorage ? userFromLocalStorage.email : null;
+
+  const canShowActions = userFromLocalStorage && (user.role === 'ADMIN' || emailFromLocalStorage === projects.find(project => project._id === projectId)?.projectManager);
+
+
 
   // Update fetchTasks function to include cards
   async function fetchTasks() {
@@ -135,6 +197,9 @@ function KanbanBoard() {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
+    setMemberAdded(false); // Reset the state
+    setEmail('');
+    setTeam('');
   };
 
   const openRenameCardModal = (
@@ -157,13 +222,14 @@ function KanbanBoard() {
     setRenameCardModalVisible(true);
   };
 
-  // Update handleAddCard function
+  // // Update handleAddCard function
   const handleAddCard = async (e) => {
     e.preventDefault();
-    const cardTitle = e.target.title.value;
-    const cardDescription = e.target.description.value;
+    const cardTitle = e.target.title.value.trim();
+    const cardDescription = e.target.description.value.trim();
 
     if (!cardTitle || !cardDescription || !selectedColumnId || !email) {
+      alert("Please enter text for both card title and description.");
       return;
     }
 
@@ -325,11 +391,11 @@ function KanbanBoard() {
             },
           }
         );
-
+  
         if (!response.ok) {
           throw new Error("Failed to remove card");
         }
-
+  
         setBoardData((prevState) => ({
           ...prevState,
           columns: prevState.columns.map((column) =>
@@ -341,23 +407,42 @@ function KanbanBoard() {
               : column
           ),
         }));
-
+  
         setShowDeleteConfirmation(false);
         setCardToDelete(null);
+        
+        // Show success message
+        setShowSuccessMessage(true);
+        
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+        }, 3000);
       } catch (error) {
         console.error("Error removing card:", error);
       }
     }
   };
-  // Update handleRenameCard function
+
+  // // Update handleRenameCard function
   const handleRenameCard = async (e) => {
     e.preventDefault();
-    if (
-      !renameCardTitle ||
-      !renameCardDescription ||
-      !selectedColumnId ||
-      !selectedCardId
-    ) {
+    const trimmedTitle = renameCardTitle.trim();
+    const trimmedDescription = renameCardDescription.trim();
+    let hasErrors = false;
+    const errors = { title: '', description: '' };
+
+    if (!trimmedTitle) {
+      errors.title = 'Please enter a card title';
+      hasErrors = true;
+    }
+    if (!trimmedDescription) {
+      errors.description = 'Please enter a card description';
+      hasErrors = true;
+    }
+
+    if (hasErrors) {
+      setRenameCardErrors(errors);
       return;
     }
 
@@ -371,8 +456,8 @@ function KanbanBoard() {
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
           body: JSON.stringify({
-            name: renameCardTitle,
-            description: renameCardDescription,
+            name: trimmedTitle,
+            description: trimmedDescription,
           }),
         }
       );
@@ -389,10 +474,10 @@ function KanbanBoard() {
               cards: column.cards.map((card) =>
                 card.id === selectedCardId
                   ? {
-                      ...card,
-                      title: renameCardTitle,
-                      description: renameCardDescription,
-                    }
+                    ...card,
+                    title: trimmedTitle,
+                    description: trimmedDescription,
+                  }
                   : card
               ),
             };
@@ -404,6 +489,14 @@ function KanbanBoard() {
       });
 
       setRenameCardModalVisible(false);
+      setRenameCardErrors({ title: '', description: '' });
+
+      //added
+      setShowSuccessPopup(true);
+      setTimeout(() => {
+        setShowSuccessPopup(false);
+      }, 1000);
+
     } catch (error) {
       console.error("Error renaming card:", error);
     }
@@ -435,14 +528,19 @@ function KanbanBoard() {
       setBoardData(revertedBoard);
     }
   };
+
+
+  // // add coloumn
   const handleAddColumn = () => {
+    setNewColumnError(false);
     setNewColumnModalVisible(true);
   };
 
-  // add coloumn
   const handleAddColumnSubmit = async (e) => {
     e.preventDefault();
-    if (!newColumnName) {
+    const trimmedColumnName = newColumnName.trim();
+    if (!trimmedColumnName) {
+      setNewColumnError(true);
       return;
     }
 
@@ -455,7 +553,7 @@ function KanbanBoard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({ name: newColumnName }),
+          body: JSON.stringify({ name: trimmedColumnName }),
         }
       );
 
@@ -473,11 +571,11 @@ function KanbanBoard() {
       }));
       setNewColumnModalVisible(false);
       setNewColumnName("");
+      setNewColumnError(false);
     } catch (error) {
       console.error("Error adding task:", error);
     }
   };
-
   // Update the handleRenameColumn function
   const handleRenameColumn = async (newColumnName) => {
     if (selectedColumnId && newColumnName) {
@@ -574,6 +672,8 @@ function KanbanBoard() {
 
         const project = await response.json();
         setProjectName(project.name);
+        console.log(project.projectManager)
+        setProjectManager(project.projectManger)
       } catch (error) {
         console.error("Error fetching project details:", error);
       }
@@ -588,7 +688,7 @@ function KanbanBoard() {
       alert("Please fill in all fields");
       return;
     }
-  
+
     try {
       const response = await fetch(
         `${server}/api/projects/${projectId}/teams/addUser`,
@@ -601,17 +701,18 @@ function KanbanBoard() {
           body: JSON.stringify({ email, teamName: team }),
         }
       );
-  
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Error response:", errorText);
         throw new Error(`Error: ${response.status} ${response.statusText}`);
       }
-  
+
       const data = await response.json();
-  
+
       if (response.ok) {
         alert("User added to team successfully");
+        setMemberAdded(true); // Set the state to true
         handleCloseModal();
       } else {
         alert(`Error: ${data.message}`);
@@ -621,7 +722,7 @@ function KanbanBoard() {
       alert("An error occurred while adding user to team");
     }
   };
-  
+
 
   async function handleChangeStatus(cardId, newStatus) {
     try {
@@ -678,19 +779,22 @@ function KanbanBoard() {
     }
   };
 
-  ////
+
   const renderCard = (card, { dragging }) => (
     <div
       className={`react-kanban-card ${dragging ? "dragging" : ""}`}
       style={{ borderRadius: "20px", maxWidth: "750px" }}
     >
-      <div className="react-kanban-card__title">{card.title}</div>
-      <div className="react-kanban-card__description">{card.description}</div>
+      <div className="react-kanban-card__title truncate" title={card.title}>
+        {card.title.length > 20 ? card.title.slice(0, 28) + "..." : card.title}
+      </div>
+      <div className="react-kanban-card__description truncate" title={card.description}>
+        {card.description.length > 35 ? card.description.slice(0, 35) + "..." : card.description}
+      </div>
       <div className="react-kanban-card__assignedTo flex items-center justify-end">
         {card.assignedTo && (
           <div
             className="profile-picture w-6 h-6 rounded-full bg-blue-400 text-white flex justify-center items-center font-bold ml-2 relative group"
-            // title={card.assignedTo}
           >
             <span className="group-hover:block hidden absolute top-8 right-0 bg-gray-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap">
               {card.assignedTo}
@@ -708,7 +812,7 @@ function KanbanBoard() {
           <option value="completed">Completed</option>
         </select>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px" }}>
         <button
           className="delete-card-button"
           onClick={() => confirmRemoveCard(card.columnId, card.id)}
@@ -731,7 +835,6 @@ function KanbanBoard() {
       </div>
     </div>
   );
-
   ////
 
   return (
@@ -745,25 +848,38 @@ function KanbanBoard() {
             <div className="bg-white p-6 rounded-3xl ">
               <h2 className="text-lg font-bold mb-4">Rename Card</h2>
               <form onSubmit={handleRenameCard}>
-                <input
-                  type="text"
-                  value={renameCardTitle}
-                  onChange={(e) => setRenameCardTitle(e.target.value)}
-                  className="border border-gray-300 rounded-3xl px-4 py-2 mb-4 w-full"
-                  placeholder="Card Title"
-                  required
-                />
-                <textarea
-                  value={renameCardDescription}
-                  onChange={(e) => setRenameCardDescription(e.target.value)}
-                  className="border border-gray-300 rounded-3xl px-4 py-2 mb-4 w-full"
-                  placeholder="Card "
-                  required
-                />
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={renameCardTitle}
+                    onChange={(e) => {
+                      setRenameCardTitle(e.target.value);
+                      setRenameCardErrors(prev => ({ ...prev, title: '' }));
+                    }}
+                    className={`border ${renameCardErrors.title ? 'border-red-500' : 'border-gray-300'} rounded-3xl px-4 py-2 w-full`}
+                    placeholder="Card Title"
+                  />
+                  {renameCardErrors.title && <p className="text-red-500 text-sm mt-1">{renameCardErrors.title}</p>}
+                </div>
+                <div className="mb-4">
+                  <textarea
+                    value={renameCardDescription}
+                    onChange={(e) => {
+                      setRenameCardDescription(e.target.value);
+                      setRenameCardErrors(prev => ({ ...prev, description: '' }));
+                    }}
+                    className={`border ${renameCardErrors.description ? 'border-red-500' : 'border-gray-300'} rounded-3xl px-4 py-2 w-full`}
+                    placeholder="Card Description"
+                  />
+                  {renameCardErrors.description && <p className="text-red-500 text-sm mt-1">{renameCardErrors.description}</p>}
+                </div>
                 <div className="flex justify-between">
                   <button
                     type="button"
-                    onClick={() => setRenameCardModalVisible(false)}
+                    onClick={() => {
+                      setRenameCardModalVisible(false);
+                      setRenameCardErrors({ title: '', description: '' });
+                    }}
                     className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl mr-2"
                   >
                     Cancel
@@ -779,83 +895,94 @@ function KanbanBoard() {
             </div>
           </div>
         )}
+        {showSuccessPopup && (
+          <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
+            <div className="bg-green-400 p-2 rounded-xl">
+              <h2 className="text-lg text-white font-bold mb-2">Card renamed successfully</h2>
+            </div>
+          </div>
+
+        )}
       </div>
       <div className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-xl font-bold">Project : {projectName}</h1>
         </div>
         <div className="flex space-x-2 ">
-          <button
-            onClick={handleOpenModal}
-            className="bg-green-500 text-white px-4 py-2 rounded-full"
-          >
-            + Add member
-          </button>
-
+          {canShowActions && (
+            <button
+              onClick={handleOpenModal}
+              className={`${memberAdded ? 'bg-gray-400' : 'bg-green-500'
+                } text-white px-4 py-2 rounded-full`}
+              disabled={memberAdded}
+            >
+              {memberAdded ? 'Member Added' : '+ Add member'}
+            </button>
+          )}
           {/* added */}
 
           {isModalOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-slate-700 z-50 bg-opacity-50">
-          <div className="bg-white p-6 w-96 rounded-3xl shadow-4xl">
-            <div className="relative">
-              <label className="block mb-2">Email:</label>
-              <input
-                type="email"
-                value={email}
-                onChange={handleaddmember}
-                placeholder="Enter email address"
-                className="border border-gray-300 p-2 rounded-3xl w-full"
-              />
-              {emailSuggestions.length > 0 && (
-                <ul
-                  className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-full z-10"
-                  ref={suggestionListRef}
-                >
-                  {emailSuggestions.map((suggestion) => (
-                    <li
-                      key={suggestion.email}
-                      onClick={() => {
-                        setEmail(suggestion.email);
-                        setEmailSuggestions([]);
-                      }}
-                      className="p-2 hover:bg-gray-200 cursor-pointer"
+            <div className="fixed inset-0 flex items-center justify-center bg-slate-700 z-50 bg-opacity-50">
+              <div className="bg-white p-6 w-96 rounded-3xl shadow-4xl">
+                <div className="relative">
+                  <label className="block mb-2">Email:</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={handleaddmember}
+                    placeholder="Enter email address"
+                    className="border border-gray-300 p-2 rounded-3xl w-full"
+                  />
+                  {emailSuggestions.length > 0 && (
+                    <ul
+                      className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-full z-10"
+                      ref={suggestionListRef}
                     >
-                      {suggestion.email}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                      {emailSuggestions.map((suggestion) => (
+                        <li
+                          key={suggestion.email}
+                          onClick={() => {
+                            setEmail(suggestion.email);
+                            setEmailSuggestions([]);
+                          }}
+                          className="p-2 hover:bg-gray-200 cursor-pointer"
+                        >
+                          {suggestion.email}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <label className="block mb-2">Team:</label>
+                  <select
+                    value={team}
+                    onChange={(e) => setTeam(e.target.value)}
+                    className="border border-gray-300 p-2 rounded-3xl w-full"
+                  >
+                    <option value="">Select a team</option>
+                    <option value="Development">Development</option>
+                    <option value="DevOps">DevOps</option>
+                    <option value="Testing">Testing</option>
+                  </select>
+                </div>
+                <div className="mt-4 flex justify-between">
+                  <button
+                    className="bg-gray-500 text-white px-4 py-2 rounded-3xl mr-2"
+                    onClick={handleCloseModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="bg-blue-500 text-white px-4 py-2 rounded-3xl"
+                    onClick={() => handleTeamSubmit()}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block mb-2">Team:</label>
-              <select
-                value={team}
-                onChange={(e) => setTeam(e.target.value)}
-                className="border border-gray-300 p-2 rounded-3xl w-full"
-              >
-                <option value="">Select a team</option>
-                <option value="Development">Development</option>
-                <option value="DevOps">DevOps</option>
-                <option value="Testing">Testing</option>
-              </select>
-            </div>
-            <div className="mt-4 flex justify-between">
-              <button
-                className="bg-gray-500 text-white px-4 py-2 rounded-3xl mr-2"
-                onClick={handleCloseModal}
-              >
-                Cancel
-              </button>
-              <button
-                className="bg-blue-500 text-white px-4 py-2 rounded-3xl"
-                onClick={() => handleTeamSubmit()}
-              >
-                Add
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
 
           <button
             className="bg-blue-500 text-white px-4 py-2 rounded-full"
@@ -909,13 +1036,7 @@ function KanbanBoard() {
             </div>
           )}
           renderColumnHeader={({ title, id }) => (
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                width: "300px", // fixed width
-              }}
-            >
+            <div style={{ display: "flex", flexDirection: "column", width: "300px" }}>
               <div
                 style={{
                   display: "flex",
@@ -924,10 +1045,15 @@ function KanbanBoard() {
                   marginBottom: "0.5rem",
                   padding: "0.5rem",
                   backgroundColor: "#F7FAFC",
-                 borderRadius:"20px"
+                  borderRadius: "20px"
                 }}
               >
-                <span>{title}</span>
+                <span
+                  className="truncate max-w-[200px]"
+                  title={title}
+                >
+                  {title}
+                </span>
                 <button
                   onClick={() => openModal(id, "options")}
                   className="text-gray-600 hover:text-gray-800"
@@ -938,7 +1064,7 @@ function KanbanBoard() {
               <button
                 onClick={() => openModal(id, "addCard")}
                 style={{
-                  width: "100%", // full width of the column header
+                  width: "100%",
                   backgroundColor: "#EDF2F7",
                   borderBottomLeftRadius: "0.375rem",
                   borderBottomRightRadius: "0.375rem",
@@ -956,7 +1082,6 @@ function KanbanBoard() {
           {boardData}
         </Board>
       </div>
-
       {modalVisible && modalType === "addCard" && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
           <div className="bg-white w-96  p-6 rounded-3xl shadow-lg">
@@ -968,12 +1093,14 @@ function KanbanBoard() {
                 className="border border-gray-300 rounded-xl px-4 py-2 mb-4 w-full"
                 placeholder="Card Title"
                 required
+                onChange={(e) => e.target.value = e.target.value.trimStart()}
               />
               <textarea
                 name="description"
                 className="border border-gray-300 rounded-xl px-4 py-2 mb-4 w-full"
                 placeholder="Card Description"
                 required
+                onChange={(e) => e.target.value = e.target.value.trimStart()}
               />
               <input
                 type="email"
@@ -981,7 +1108,7 @@ function KanbanBoard() {
                 onChange={handleaddmember}
                 placeholder="Enter email address"
                 className="border border-gray-300 p-2 rounded-3xl w-full"
-                
+
               />
               {emailSuggestions.length > 0 && (
                 <ul
@@ -1044,23 +1171,42 @@ function KanbanBoard() {
           </div>
         </div>
       )}
+      {showSuccessMessage && (
+  <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
+    <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
+      <p className="font-semibold">Card deleted successfully</p>
+    </div>
+  </div>
+)}
 
       {newColumnModalVisible && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50 overflow-y-auto">
           <div className="bg-white p-6 w-96 rounded-3xl shadow-lg max-h-screen ">
             <h2 className="text-lg font-bold mb-4">Add New Column</h2>
+
             <form onSubmit={handleAddColumnSubmit}>
               <input
                 type="text"
                 value={newColumnName}
-                onChange={(e) => setNewColumnName(e.target.value)}
-                className="border border-gray-300 rounded-xl px-3 py-3 mb-4 w-full"
+                onChange={(e) => {
+                  setNewColumnName(e.target.value.trimStart());
+                  setNewColumnError(false);
+                }}
+                className={`border ${newColumnError ? 'border-red-500' : 'border-gray-300'
+                  } rounded-xl px-3 py-3 mb-4 w-full`}
                 placeholder="Column Name"
+                required
               />
+              {newColumnError && (
+                <p className="text-red-500 text-sm mb-2">Please enter a column name</p>
+              )}
               <div className="flex justify-between">
                 <button
                   type="button"
-                  onClick={() => setNewColumnModalVisible(false)}
+                  onClick={() => {
+                    setNewColumnModalVisible(false);
+                    setNewColumnError(false);
+                  }}
                   className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl mr-2"
                 >
                   Cancel
@@ -1130,7 +1276,6 @@ function KanbanBoard() {
               </div>
             </div>
           )}
-
           {showRenameInput && (
             <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
               <div className="bg-white p-6 rounded-3xl h-1/3 w-4/12 shadow-lg">
@@ -1138,16 +1283,25 @@ function KanbanBoard() {
                 <input
                   type="text"
                   value={newColumnName}
-                  onChange={(e) => setNewColumnName(e.target.value)}
-                  className="border rounded-2xl p-2 w-full mb-4"
+                  onChange={(e) => {
+                    setNewColumnName(e.target.value.trimStart());
+                    setRenameColumnError(false);
+                  }}
+                  className={`border rounded-2xl p-2 w-full mb-4 ${renameColumnError ? 'border-red-500' : 'border-gray-300'
+                    }`}
                   placeholder="Enter the new name for the column"
                 />
+                {renameColumnError && (
+                  <p className="text-red-500 text-sm mb-2">Please enter a column name</p>
+                )}
                 <div className="flex justify-between">
                   <button
                     onClick={() => {
                       if (newColumnName.trim()) {
                         setShowRenameInput(false);
                         setShowRenameConfirmation(true);
+                      } else {
+                        setRenameColumnError(true);
                       }
                     }}
                     className="bg-green-500 text-white px-4 py-2 rounded-3xl"
@@ -1155,7 +1309,10 @@ function KanbanBoard() {
                     Confirm
                   </button>
                   <button
-                    onClick={() => setShowRenameInput(false)}
+                    onClick={() => {
+                      setShowRenameInput(false);
+                      setRenameColumnError(false);
+                    }}
                     className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl"
                   >
                     Cancel
@@ -1169,7 +1326,7 @@ function KanbanBoard() {
             <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
               <div className="bg-white p-6 rounded-3xl shadow-lg">
                 <p className="text-lg font-bold mb-4">
-                  Are you sure you want to rename this column to ?
+                  Are you sure want to rename this column ?
                 </p>
                 <div className="flex justify-between">
                   <button

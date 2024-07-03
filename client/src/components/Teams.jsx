@@ -28,6 +28,7 @@ const Teams = () => {
                 });
                 setUser({ role: response.data.role, email: response.data.email });
                 fetchProjects(response.data.organizationId);
+               
             } catch (error) {
                 console.error("Error fetching user role:", error);
             }
@@ -98,31 +99,32 @@ const Teams = () => {
             console.error("Error fetching team members:", error);
         }
     };
-
     const deleteUser = async (teamName, email) => {
         try {
-            console.log(`Deleting user ${email} from team ${teamName}`);
-            await axios.delete(`${server}/api/projects/${projectId}/teams/${teamName}/users`, {
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem("token")}`,
-                },
-                data: { email },
-            });
-            // Update state to reflect the changes in the UI
-            setTeamMembers(prevTeamMembers => prevTeamMembers.filter(member => member.email !== email));
-            setAllMembers(prevAllMembers => prevAllMembers.filter(member => member.email !== email || member.team !== teamName));
-            setSuccessMessage(`User ${email} successfully deleted.`);
-            setShowConfirmation(false);
-            setUserToDelete(null);
-            // Dismiss the success message after 1 second
-            setTimeout(() => {
-                setSuccessMessage('');
-            }, 1000);
+          await axios.delete(`${server}/api/projects/${projectId}/teams/${teamName}/users`, {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            data: { email },
+          });
+          
+          // Update state to reflect the changes in the UI
+          setTeamMembers(prevTeamMembers => prevTeamMembers.filter(member => member.email !== email));
+          setAllMembers(prevAllMembers => prevAllMembers.filter(member => member.email !== email || member.team !== teamName));
+          
+          setSuccessMessage(`User ${email} successfully deleted from ${teamName}.`);
+          setShowConfirmation(false);
+          setUserToDelete(null);
+          
+          // Dismiss the success message after 3 seconds
+          setTimeout(() => {
+            setSuccessMessage('');
+          }, 3000);
         } catch (error) {
-            console.error("Error deleting user:", error);
+          console.error("Error deleting user:", error);
+          // Handle error (e.g., show error message to user)
         }
-    };
-
+      };
     const handleDeleteClick = (teamName, email) => {
         setShowConfirmation(true);
         setUserToDelete({ teamName, email });
@@ -155,6 +157,17 @@ const Teams = () => {
                 return null;
         }
     };
+// Function to get the user object from local storage
+const getUserFromLocalStorage = () => {
+    const user = localStorage.getItem('user');
+    return user ? JSON.parse(user) : null;
+  };
+  
+  // Inside your component
+  const userFromLocalStorage = getUserFromLocalStorage();
+  const emailFromLocalStorage = userFromLocalStorage ? userFromLocalStorage.email : null;
+  const canShowActions = userFromLocalStorage && (userFromLocalStorage.role === 'ADMIN' || emailFromLocalStorage === projects.find(project => project._id === projectId)?.projectManager);
+
 
     return (
         <div className="min-h-screen py-8 px-4">
@@ -195,8 +208,10 @@ const Teams = () => {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Team</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                </tr>
+                                      {canShowActions && (
+                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                 )}
+                      </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {allMembers.map((member, index) => (
@@ -206,14 +221,16 @@ const Teams = () => {
                                         <td className="px-6 py-4 whitespace-nowrap">{member.role}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">{member.team}</td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            {(user.role === 'ADMIN' || user.email === projects.find(project => project._id === projectId)?.projectManager) && (
-                                                <button
-                                                    className="text-red-600 hover:text-red-900"
-                                                    onClick={() => handleDeleteClick(member.team, member.email)}
-                                                >
-                                                    Delete
-                                                </button>
-                                            )}
+                                        {canShowActions && (
+          <td className="px-6 py-4 whitespace-nowrap">
+            <button
+              className="text-red-600 hover:text-red-900"
+              onClick={() => handleDeleteClick(member.team, member.email)}
+            >
+              Delete
+            </button>
+          </td>
+        )}
                                         </td>
                                     </tr>
                                 ))}
@@ -275,14 +292,6 @@ const Teams = () => {
 };
 
 export default Teams;
-
-
-
-
-
-
-
-
 
 
 
