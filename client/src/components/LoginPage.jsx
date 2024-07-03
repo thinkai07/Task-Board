@@ -52,7 +52,7 @@ const LoginPage = ({ onLogin }) => {
         setTimeout(() => {
           setSuccessMessage('');
           navigate('/');
-        }, 3000);
+        }, 1000);
       } else {
         setError(data.message);
       }
@@ -85,12 +85,12 @@ const LoginPage = ({ onLogin }) => {
       <div className="w-screen max-w-5xl rounded-3xl overflow-hidden shadow-lg flex">
         {(error || successMessage) && (
           <div className="fixed top-3 inset-x-0 flex items-center justify-center">
-            <div className="bg-white p-2 rounded-3xl shadow-lg flex items-center">
+            <div className="bg-white p-2 rounded-xl shadow-lg flex items-center">
               <FontAwesomeIcon
                 icon={faCheckCircle}
-                className={`text-4xl mr-4 ${error ? 'text-red-500' : 'text-green-500'}`}
+                className={`text-l mr-4 ${error ? 'text-red-500' : 'text-green-500'}`}
               />
-              <p className="text-xl text-gray-800">{error || successMessage}</p>
+              <p className="text-l text-gray-800">{error || successMessage}</p>
             </div>
           </div>
         )}

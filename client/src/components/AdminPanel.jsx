@@ -7,6 +7,7 @@ import useTokenValidation from "./UseTockenValidation";
 const AdminPanel = () => {
   useTokenValidation();
   const [data, setData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [name, setName] = useState("");
@@ -17,6 +18,7 @@ const AdminPanel = () => {
   const [userRole, setUserRole] = useState("");
   const [userIdToDelete, setUserIdToDelete] = useState(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const fetchUsers = async () => {
     const token = localStorage.getItem("token");
@@ -25,6 +27,7 @@ const AdminPanel = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
       setData(response.data.users);
+      setFilteredData(response.data.users);
     } catch (error) {
       console.error("Error fetching users:", error);
     }
@@ -47,17 +50,35 @@ const AdminPanel = () => {
     fetchUserRole();
   }, []);
 
+
+ 
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  };
+
   const handleAddUser = async () => {
     const token = localStorage.getItem("token");
     setLoading(true);
     setError(null);
+
+    if (!validateEmail(email.trim())) {
+      setError("Please enter a valid email address.");
+      setLoading(false);
+      return;
+    }
+
+    if (data.some((user) => user.email === email.trim())) {
+      setError("Email is already registered.");
+      setLoading(false);
+      return;
+    }
 
     try {
       const response = await axios.post(
         `${server}/api/addUser`,
         {
           name,
-          email,
+          email: email.trim(),
           role,
         },
         {
@@ -66,12 +87,13 @@ const AdminPanel = () => {
       );
 
       setData([...data, response.data.user]);
+      setFilteredData([...data, response.data.user]);
       setName("");
       setEmail("");
       setRole("user");
       setIsModalOpen(false);
       setSuccessMessage("User added successfully!");
-      setTimeout(() => setSuccessMessage(""), 3000); // Hide the message after 3 seconds
+      setTimeout(() => setSuccessMessage(""), 3000);
     } catch (error) {
       console.error("Error adding user:", error);
       setError("Failed to add user. Please try again.");
@@ -91,15 +113,28 @@ const AdminPanel = () => {
       await axios.delete(`${server}/api/deleteUser/${userIdToDelete}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setData(data.filter((user) => user._id !== userIdToDelete));
+      const updatedData = data.filter((user) => user._id !== userIdToDelete);
+      setData(updatedData);
+      setFilteredData(updatedData);
       setIsConfirmModalOpen(false);
       setUserIdToDelete(null);
       setSuccessMessage("User deleted successfully!");
-      setTimeout(() => setSuccessMessage(""), 3000); // Hide the message after 3 seconds
+      setTimeout(() => setSuccessMessage(""), 3000);
     } catch (error) {
       console.error("Error deleting user:", error);
       setError("Failed to delete user. Please try again.");
     }
+  };
+
+  const handleSearch = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    const filtered = data.filter(
+      (user) =>
+        user.name.toLowerCase().includes(value.toLowerCase()) ||
+        user.email.toLowerCase().includes(value.toLowerCase())
+    );
+    setFilteredData(filtered);
   };
 
   return (
@@ -111,7 +146,7 @@ const AdminPanel = () => {
         </div>
       )}
 
-      <div className="flex justify-end p-4">
+      <div className="flex justify-between p-4">
         {userRole === "ADMIN" && (
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded-2xl"
@@ -120,6 +155,13 @@ const AdminPanel = () => {
             Add User
           </button>
         )}
+        <input
+          type="text"
+          placeholder="Search by name or email"
+          value={searchTerm}
+          onChange={handleSearch}
+          className="px-4 py-2 border border-gray-300 rounded-2xl"
+        />
       </div>
       <table className="min-w-full divide-y bg-gray-200 divide-gray-1000">
         <thead>
@@ -153,27 +195,27 @@ const AdminPanel = () => {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {data.map((item, index) => (
+          {filteredData.map((item, index) => (
             <tr key={index}>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">
                 {item.name}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">
                 {item.email}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">
                 {item.role}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-600">
-                {userRole === "ADMIN" && (
+              {userRole === "ADMIN" && (
+                <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">
                   <button
                     className="px-4 py-2 bg-red-600 text-white rounded-2xl"
                     onClick={() => confirmDeleteUser(item._id)}
                   >
                     Delete
                   </button>
-                )}
-              </td>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -208,18 +250,50 @@ const AdminPanel = () => {
                         type="text"
                         placeholder="Name"
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                          let inputValue = e.target.value;
+
+                          // Trim leading spaces
+                          if (inputValue.startsWith(" ")) {
+                            inputValue = inputValue.trimStart();
+                          }
+
+                          // Allow spaces after the first character
+                          const formattedName = inputValue
+                            .replace(/^[^a-zA-Z0-9_]+/, "")
+                            .replace(/[^a-zA-Z0-9_\s]/g, "");
+
+                          setName(formattedName);
+                        }}
                         className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
                       />
+
                       <input
                         type="email"
                         placeholder="Email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
+                        onChange={(e) => {
+                          const inputValue = e.target.value;
+                          // Remove leading spaces and other invalid characters, keeping only valid email characters
+                          const cleanedEmail = inputValue.replace(/^\s+/, '').replace(/[^a-zA-Z0-9@._-]/g, '');
+                          setEmail(cleanedEmail);
+                        }}
+                        onBlur={() => {
+                          if (email && !validateEmail(email)) {
+                            setError("Please enter a valid email address.");
+                          } else {
+                            setError(null);
+                          }
+                        }}
+                        className={`mt-2 p-2 border ${
+                          error ? "border-red-500" : "border-gray-300"
+                        } rounded-2xl w-full`}
                       />
+
+                      {error && (
+                        <div className="text-red-500 mt-2">{error}</div>
+                      )}
                     </div>
-                    {error && <div className="text-red-500 mt-2">{error}</div>}
                   </div>
                 </div>
               </div>
@@ -271,7 +345,7 @@ const AdminPanel = () => {
                     </h3>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        Are you sure want to delete
+                        Are you sure you want to delete this user?
                       </p>
                     </div>
                   </div>

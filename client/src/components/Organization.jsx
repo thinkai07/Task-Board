@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -47,6 +46,7 @@ const Organization = () => {
       return;
     }
 
+    // Proceed with registration
     try {
       const response = await axios.post(`${server}/register`, {
         organizationName,
@@ -62,7 +62,11 @@ const Organization = () => {
     } catch (error) {
       console.error(error);
       // Handle error (e.g., show error message)
-      setError('An error occurred. Please try again later.');
+      if (error.response && error.response.data.message === 'Email is already registered') {
+        setError('Email is already registered.');
+      } else {
+        setError('Email is already registered.');
+      }
     }
   };
 
@@ -72,7 +76,7 @@ const Organization = () => {
         setShowPopup(false);
         setShowPassword(false); // Reset password visibility when popup is hidden
         navigate('/login');
-      }, 3000);
+      }, 1000);
 
       return () => {
         clearTimeout(timer);
@@ -169,21 +173,18 @@ const Organization = () => {
         </div>
       </div>
       {showPopup && (
-  <div className="fixed top-3 inset-x-0 flex items-center justify-center">
-    <div className="bg-white p-2 rounded-3xl shadow-lg flex items-center">
-      <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 text-4xl mr-4" />
-      <p className="text-xl text-gray-800">Organization successfully  and please verify before login </p>
-    </div>
-  </div>
-)}
-
+        <div className="fixed top-3 inset-x-0 flex items-center justify-center">
+          <div className="bg-white p-2 rounded-3xl shadow-lg flex items-center">
+            <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 text-l mr-4" />
+            <p className="text-l text-gray-800">Organization successfully created and please verify before login</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Organization;
-
-
 
 
 
