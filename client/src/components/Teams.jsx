@@ -1,3 +1,4 @@
+//teams.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { TiGroup } from "react-icons/ti";

@@ -1123,6 +1123,52 @@ app.delete('/api/projects/:projectId/teams/:teamName/users', authenticateToken, 
 
 
 
+// New endpoint to search for users within the project's teams
+app.get('/api/projects/:projectId/users/search', authenticateToken, async (req, res) => {
+  const { projectId } = req.params;
+  const { email } = req.query;
+
+  if (!email) {
+    return res.status(400).json({ message: 'Email query parameter is required' });
+  }
+
+  try {
+    const project = await Project.findById(projectId).populate({
+      path: 'teams',
+      populate: {
+        path: 'users.user',
+        model: 'User'
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: 'Project not found' });
+    }
+
+    const matchingUsers = [];
+    project.teams.forEach(team => {
+      team.users.forEach(user => {
+        if (user.user.email.toLowerCase().includes(email.toLowerCase())) {
+          matchingUsers.push({
+            name: user.user.name,
+            email: user.user.email,
+            role: user.role,
+            team: team.name
+          });
+        }
+      });
+    });
+
+    if (matchingUsers.length === 0) {
+      return res.status(404).json({ message: 'No users found within the project teams with the given email' });
+    }
+
+    res.status(200).json({ users: matchingUsers });
+  } catch (error) {
+    console.error('Error searching project team users:', error);
+    res.status(500).json({ message: 'Error searching project team users' });
+  }
+});
 
 
 

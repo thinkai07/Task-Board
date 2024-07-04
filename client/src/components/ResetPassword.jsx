@@ -1,4 +1,4 @@
-import React,{ useState } from 'react';
+import React, { useState } from 'react';
 import regImage from '../assets/reset.png';
 import axios from 'axios';
 import { server } from '../constant';
@@ -35,21 +35,21 @@ const ResetPage = () => {
       return;
     }
     if (!validatePassword(password)) {
-        setError('Password must be at least 8 characters ');
-        return;
-      }
-  
+      setError('Password must be at least 8 characters ');
+      return;
+    }
 
-      try {
-        await axios.post(`${server}/resetPassword`, { token, newPassword: password });
-        setSuccess('Password reset successfully');
-    
-        window.location.href = '/login';
-      } catch (err) {
-        setError('Token has expired');
-      }
-    };
-  
+
+    try {
+      await axios.post(`${server}/resetPassword`, { token, newPassword: password });
+      setSuccess('Password reset successfully');
+
+      window.location.href = '/login';
+    } catch (err) {
+      setError('Token has expired');
+    }
+  };
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
@@ -76,14 +76,19 @@ const ResetPage = () => {
                 Password
               </label>
               <input
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline pr-10"
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+                onChange={(e) => {
+                  const trimmedValue = e.target.value.replace(/\s/g, ''); // Remove all spaces
+                  setError('');
+                  setPassword(trimmedValue);
+                }}
               />
+              {error && <p className="text-red-500 text-xs italic">{error}</p>}
+
               <div
                 className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
                 onClick={togglePasswordVisibility}
@@ -99,14 +104,19 @@ const ResetPage = () => {
                 Confirm Password
               </label>
               <input
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline pr-10"
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
                 id="confirmPassword"
                 type={showConfirmPassword ? 'text' : 'password'}
                 placeholder="Confirm Password"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  const trimmedValue = e.target.value.replace(/\s/g, ''); // Remove all spaces
+                  setError('');
+                  setConfirmPassword(trimmedValue);
+                }}
                 required
               />
+              {error && <p className="text-red-500 text-xs italic">{error}</p>}
               <div
                 className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
                 onClick={toggleConfirmPasswordVisibility}
@@ -143,15 +153,6 @@ const ResetPage = () => {
 };
 
 export default ResetPage;
-
-
-
-
-
-
-
-
-
 
 
 
