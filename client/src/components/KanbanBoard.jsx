@@ -31,6 +31,7 @@ function KanbanBoard() {
   const { projectId } = useParams();
 
   const [renameColumnError, setRenameColumnError] = useState(false);
+  const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
 
   const [projectName, setProjectName] = useState("");
   const [projectManager, setProjectManager] = useState("");
@@ -223,6 +224,20 @@ function KanbanBoard() {
     setRenameCardModalVisible(true);
   };
 
+  const clearFieldsAndRefresh = async () => {
+    // Clear input fields
+    if (document.forms[0]) {
+      document.forms[0].reset();
+    }
+    setEmail('');
+
+    // Close the modal
+    setModalVisible(false);
+
+    // Refresh board data
+    await fetchTasks();
+  };
+
   // // Update handleAddCard function
   const handleAddCard = async (e) => {
     e.preventDefault();
@@ -235,6 +250,29 @@ function KanbanBoard() {
     }
 
     try {
+      // Search for the user within the project's teams
+      const searchResponse = await fetch(
+        `${server}/api/projects/${projectId}/users/search?email=${email}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!searchResponse.ok) {
+        throw new Error("User is not part of the project");
+      }
+
+      const { users } = await searchResponse.json();
+      if (users.length === 0) {
+        alert("The entered email is not part of the project.");
+        return;
+      }
+
+      // Proceed to add the card
       const response = await fetch(
         `${server}/api/tasks/${selectedColumnId}/cards`,
         {
@@ -255,35 +293,59 @@ function KanbanBoard() {
         throw new Error("Failed to add card");
       }
 
-      const { card } = await response.json();
-      setBoardData((prevState) => {
-        const updatedColumns = prevState.columns.map((column) => {
-          if (column.id === selectedColumnId) {
-            return {
-              ...column,
-              cards: [
-                ...column.cards,
-                {
-                  id: card._id,
-                  title: card.name,
-                  description: card.description,
-                  assignedTo: card.assignedTo,
-                  status: card.status,
-                },
-              ],
-            };
-          }
-          return column;
-        });
+      await clearFieldsAndRefresh();
+      // Clear input fields
+      e.target.title.value = '';
+      e.target.description.value = '';
+      setEmail('');
 
-        return { ...prevState, columns: updatedColumns };
-      });
-
+      // Close the modal
       setModalVisible(false);
+
+      // Refresh board data
+      await fetchTasks();
+
     } catch (error) {
       console.error("Error adding card:", error);
+      alert(error.message);
     }
   };
+
+  const handleEmailChange = async (e) => {
+    const emailInput = e.target.value;
+    setEmail(emailInput);
+
+    if (!emailInput) {
+      setEmailSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${server}/api/projects/${projectId}/users/search?email=${emailInput}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch email suggestions");
+      }
+
+      const { users } = await response.json();
+      setEmailSuggestions(users);
+    } catch (error) {
+      console.error("Error fetching email suggestions:", error);
+      setEmailSuggestions([]);
+    }
+  };
+
+
+
 
   //cardmove
   async function handleCardMove(card, source, destination) {
@@ -392,29 +454,29 @@ function KanbanBoard() {
             },
           }
         );
-  
+
         if (!response.ok) {
           throw new Error("Failed to remove card");
         }
-  
+
         setBoardData((prevState) => ({
           ...prevState,
           columns: prevState.columns.map((column) =>
             column.id === columnId
               ? {
-                  ...column,
-                  cards: column.cards.filter((card) => card.id !== cardId),
-                }
+                ...column,
+                cards: column.cards.filter((card) => card.id !== cardId),
+              }
               : column
           ),
         }));
-  
+
         setShowDeleteConfirmation(false);
         setCardToDelete(null);
-        
+
         // Show success message
         setShowSuccessMessage(true);
-        
+
         // Hide success message after 3 seconds
         setTimeout(() => {
           setShowSuccessMessage(false);
@@ -625,23 +687,33 @@ function KanbanBoard() {
             },
           }
         );
-
+  
         if (!response.ok) {
           throw new Error("Failed to remove column");
         }
-
+  
         setBoardData((prevState) => ({
           ...prevState,
           columns: prevState.columns.filter(
             (column) => column.id !== selectedColumnId
           ),
         }));
+  
+        // Show success message
+        setShowDeleteSuccess(true);
+  
+        // Hide success message after 3 seconds
+        setTimeout(() => {
+          setShowDeleteSuccess(false);
+        }, 3000);
       } catch (error) {
         console.error("Error removing column:", error);
       }
     }
     closeModal();
+    setShowConfirmation(false);
   };
+ 
 
   const openModal = (columnId, type) => {
     console.log(columnId);
@@ -1084,6 +1156,7 @@ function KanbanBoard() {
           {boardData}
         </Board>
       </div>
+
       {modalVisible && modalType === "addCard" && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
           <div className="bg-white w-96  p-6 rounded-3xl shadow-lg">
@@ -1107,14 +1180,13 @@ function KanbanBoard() {
               <input
                 type="email"
                 value={email}
-                onChange={handleaddmember}
+                onChange={handleEmailChange}
                 placeholder="Enter email address"
                 className="border border-gray-300 p-2 rounded-3xl w-full"
-
               />
               {emailSuggestions.length > 0 && (
                 <ul
-                  className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-80  z-10"
+                  className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-80 z-10"
                   ref={suggestionListRef}
                 >
                   {emailSuggestions.map((suggestion) => (
@@ -1131,10 +1203,11 @@ function KanbanBoard() {
                   ))}
                 </ul>
               )}
+              {/* Email suggestions list */}
               <div className="flex px-4 py-2 justify-between">
                 <button
                   type="button"
-                  onClick={closeModal}
+                  onClick={clearFieldsAndRefresh}
                   className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl mr-2"
                 >
                   Cancel
@@ -1173,13 +1246,20 @@ function KanbanBoard() {
           </div>
         </div>
       )}
-      {showSuccessMessage && (
-  <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
-    <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
-      <p className="font-semibold">Card deleted successfully</p>
+       {showDeleteSuccess && (
+    <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
+      <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
+        <p className="font-semibold">Column deleted successfully</p>
+      </div>
     </div>
-  </div>
-)}
+  )}
+      {showSuccessMessage && (
+        <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
+          <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
+            <p className="font-semibold">Card deleted successfully</p>
+          </div>
+        </div>
+      )}
 
       {newColumnModalVisible && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50 overflow-y-auto">
@@ -1252,32 +1332,30 @@ function KanbanBoard() {
             </button>
           </div>
 
+      
           {showConfirmation && (
-            <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-              <div className="bg-white p-6 rounded-3xl shadow-lg">
-                <p className="text-lg font-bold mb-4">
-                  Are you sure you want to remove this column?
-                </p>
-                <div className="flex justify-between">
-                  <button
-                    onClick={() => {
-                      handleRemoveColumn();
-                      setShowConfirmation(false);
-                    }}
-                    className="bg-red-500 text-white px-10 py-2 rounded-full"
-                  >
-                    Yes
-                  </button>
-                  <button
-                    onClick={() => setShowConfirmation(false)}
-                    className="bg-gray-300 text-gray-700 px-10 py-2 rounded-full"
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+  <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-3xl shadow-lg">
+      <p className="text-lg font-bold mb-4">
+        Are you sure you want to remove this column?
+      </p>
+      <div className="flex justify-between">
+        <button
+          onClick={handleRemoveColumn}
+          className="bg-red-500 text-white px-10 py-2 rounded-full"
+        >
+          Yes
+        </button>
+        <button
+          onClick={() => setShowConfirmation(false)}
+          className="bg-gray-300 text-gray-700 px-10 py-2 rounded-full"
+        >
+          No
+        </button>
+      </div>
+    </div>
+  </div>
+)}
           {showRenameInput && (
             <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
               <div className="bg-white p-6 rounded-3xl h-1/3 w-4/12 shadow-lg">

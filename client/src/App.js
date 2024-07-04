@@ -80,7 +80,7 @@ const App = () => {
                 </Routes>
               </Layout>
             ) : (
-              <Navigate to="/Organization" />
+              <Navigate to="/login" />
             )
           }
         />

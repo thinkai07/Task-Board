@@ -141,7 +141,15 @@ const Organization = () => {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  const trimmedValue = e.target.value.trim(); // Trim leading and trailing spaces
+                  if (!/\s/.test(trimmedValue)) { // Check if there are no spaces
+                    setError('');
+                    setPassword(trimmedValue);
+                  } else {
+                    setError('Password should not contain spaces.');
+                  }
+                }}
               />
               <div
                 className="absolute top-1/2 transform -translate-y-1/2 right-3 cursor-pointer"

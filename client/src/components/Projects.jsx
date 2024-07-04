@@ -91,6 +91,22 @@ const Projects = () => {
         }
     };
 
+    const checkDuplicateProjectName = async (name, excludeProjectId = null) => {
+        try {
+            const response = await axios.get(`${server}/api/projects/${organizationId}`, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+            });
+            const existingProjects = response.data.projects;
+            return existingProjects.some(project =>
+                project.name.toLowerCase() === name.toLowerCase() && project._id !== excludeProjectId
+            );
+        } catch (error) {
+            console.error("Error checking for duplicate project name:", error);
+            return false;
+        }
+    };
 
     const handleTitleChange = (event, index) => {
         const value = event.target.value.replace(/^\s+/, '');
@@ -109,7 +125,7 @@ const Projects = () => {
         setNewCardErrors({ ...newCardErrors, description: false });
     };
 
-  
+
     const handleEmailChange = (event, index) => {
         const updatedCards = [...cards];
         updatedCards[index].projectManager = event.target.value;
@@ -153,6 +169,7 @@ const Projects = () => {
         setNewCardErrors({ name: false, description: false, email: false });
     };
 
+    // savenewcard
     const handleSaveNewCard = async (index) => {
         const card = cards[index];
         const newErrors = { ...newCardErrors };
@@ -173,6 +190,14 @@ const Projects = () => {
 
         if (hasError) {
             setNewCardErrors(newErrors);
+            return;
+        }
+
+        // Check for duplicate project name
+        const isDuplicate = await checkDuplicateProjectName(card.name.trim());
+        if (isDuplicate) {
+            setNewCardErrors({ ...newErrors, name: true });
+            alert("A project with this name already exists. Please choose a different name.");
             return;
         }
 
@@ -197,7 +222,7 @@ const Projects = () => {
             return;
         }
 
-        // If we've made it here, the email is valid and part of the organization
+        // If we've made it here, the project name is unique, email is valid and part of the organization
         try {
             const response = await axios.post(
                 `${server}/api/projects`,
@@ -277,6 +302,7 @@ const Projects = () => {
         setShowTooltipIndex(index);
     };
 
+    //save rename
     const handleSaveRename = async () => {
         if (!renameInputValue) {
             setRenameInputError(true);
@@ -293,6 +319,15 @@ const Projects = () => {
         if (projectManagerError) {
             return;
         }
+
+        // Check for duplicate project name
+        const isDuplicate = await checkDuplicateProjectName(renameInputValue.trim(), cards[renameIndex]._id);
+        if (isDuplicate) {
+            setRenameInputError(true);
+            alert("A project with this name already exists. Please choose a different name.");
+            return;
+        }
+
         try {
             const response = await axios.put(
                 `${server}/api/projects/${cards[renameIndex]._id}`,
@@ -446,14 +481,12 @@ const Projects = () => {
                                         }`}
                                     onClick={(e) => e.stopPropagation()}
                                 />
-                                {newCardErrors.email && (
-                                    <span className="text-red-500">This field is required</span>
-                                )}
+                               
 
                                 {newCardErrors.email && (
                                     <span className="text-red-500">
                                         {projectManagerError
-                                            ? "Email is not part of the organization"
+                                            ? "This mail is not a part of this organization"
                                             : "This field is required"}
                                     </span>
                                 )}
@@ -521,11 +554,21 @@ const Projects = () => {
                                             </span>
                                         )}
                                     </div>
+
                                     <div className="flex items-center mt-2">
                                         <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center rounded-full">
                                             {card.projectManager.charAt(0).toUpperCase()}
                                         </div>
-                                        <span className="ml-2 text-gray-700">{card.projectManager}</span>
+                                        <span className="ml-2 text-gray-700 relative group">
+                                            {card.projectManager.length > 20
+                                                ? card.projectManager.substring(0, 20) + '...'
+                                                : card.projectManager}
+                                            {card.projectManager.length > 20 && (
+                                                <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 left-0 mt-1">
+                                                    {card.projectManager}
+                                                </span>
+                                            )}
+                                        </span>
                                     </div>
                                 </div>
 
@@ -611,11 +654,7 @@ const Projects = () => {
                                 Project Description is required
                             </span>
                         )}
-                        {projectManagerError && (
-                            <span className="text-red-500">
-                                Project Manager Email is required
-                            </span>
-                        )}
+                       
 
                         <div className=" flex justify-between px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                             <button

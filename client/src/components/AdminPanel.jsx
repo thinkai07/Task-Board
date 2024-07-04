@@ -247,26 +247,32 @@ const AdminPanel = () => {
                     </h3>
                     <div className="mt-2">
                       <input
-                        type="text"
-                        placeholder="Name"
-                        value={name}
-                        onChange={(e) => {
-                          let inputValue = e.target.value;
+  type="text"
+  placeholder="Name"
+  value={name}
+  onChange={(e) => {
+    let inputValue = e.target.value;
 
-                          // Trim leading spaces
-                          if (inputValue.startsWith(" ")) {
-                            inputValue = inputValue.trimStart();
-                          }
+    // Trim leading spaces
+    if (inputValue.startsWith(" ")) {
+      inputValue = inputValue.trimStart();
+    }
 
-                          // Allow spaces after the first character
-                          const formattedName = inputValue
-                            .replace(/^[^a-zA-Z0-9_]+/, "")
-                            .replace(/[^a-zA-Z0-9_\s]/g, "");
+    // Prevent underscore (_) at the beginning
+    if (inputValue.startsWith("_")) {
+      inputValue = inputValue.substring(1); // Remove the first character if it's underscore
+    }
 
-                          setName(formattedName);
-                        }}
-                        className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
-                      />
+    // Allow spaces after the first character
+    const formattedName = inputValue
+      .replace(/^[^a-zA-Z0-9\s]+/, "") // Remove non-alphanumeric characters except spaces at the beginning
+      .replace(/[^a-zA-Z0-9_\s]/g, ""); // Allow only alphanumeric characters, underscores, and spaces
+
+    setName(formattedName);
+  }}
+  className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
+/>
+
 
                       <input
                         type="email"
@@ -274,6 +280,8 @@ const AdminPanel = () => {
                         value={email}
                         onChange={(e) => {
                           const inputValue = e.target.value;
+
+                          
                           // Remove leading spaces and other invalid characters, keeping only valid email characters
                           const cleanedEmail = inputValue.replace(/^\s+/, '').replace(/[^a-zA-Z0-9@._-]/g, '');
                           setEmail(cleanedEmail);

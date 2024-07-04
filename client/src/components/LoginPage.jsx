@@ -12,6 +12,10 @@ const LoginPage = ({ onLogin }) => {
   const [successMessage, setSuccessMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const handleRegisterClick = () => {
+    // Navigate to /Organization
+    navigate('/Organization');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -130,8 +134,13 @@ const LoginPage = ({ onLogin }) => {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => {
-                  setError('');
-                  setPassword(e.target.value);
+                  const trimmedValue = e.target.value.trim(); // Trim leading and trailing spaces
+                  if (!/\s/.test(trimmedValue)) { // Check if there are no spaces
+                    setError('');
+                    setPassword(trimmedValue);
+                  } else {
+                    setError('Password should not contain spaces.');
+                  }
                 }}
               />
               <div
@@ -147,13 +156,25 @@ const LoginPage = ({ onLogin }) => {
                 <p className="text-red-500 text-sm mt-2">{error}</p>
               )} */}
             </div>
-            <div className="flex items-center justify-left">
+            <div className="flex items-center justify-between">
               <button
                 className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105"
                 type="submit"
               >
                 Login
               </button>
+              <a
+                className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
+                href="/Organization"
+              >
+                Register as organization ?
+              </a>
+              {/* <button
+      className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105"
+      onClick={handleRegisterClick}
+    >
+      Register As organization
+    </button> */}
             </div>
           </form>
         </div>
