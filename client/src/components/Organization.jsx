@@ -182,9 +182,9 @@ const Organization = () => {
       </div>
       {showPopup && (
         <div className="fixed top-3 inset-x-0 flex items-center justify-center">
-          <div className="bg-white p-2 rounded-3xl shadow-lg flex items-center">
-            <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 text-l mr-4" />
-            <p className="text-l text-gray-800">Organization successfully created and please verify before login</p>
+          <div className="bg-white p-2 rounded-xl shadow-lg flex items-center">
+            <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 text-xl mr-4" />
+            <p className="text-xl text-gray-800">Organization created successfully  and please verify before login</p>
           </div>
         </div>
       )}

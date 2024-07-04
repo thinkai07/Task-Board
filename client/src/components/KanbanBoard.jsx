@@ -245,7 +245,7 @@ function KanbanBoard() {
     const cardDescription = e.target.description.value.trim();
 
     if (!cardTitle || !cardDescription || !selectedColumnId || !email) {
-      alert("Please enter text for both card title and description.");
+      alert("Please enter text for  card title,description and email.");
       return;
     }
 
@@ -402,6 +402,7 @@ function KanbanBoard() {
   }, [newColumnModalVisible, modalVisible]);
 
   // Update the handleCardMove function
+
   async function handleCardMove(card, source, destination) {
     // Update the frontend state
     const updatedBoard = moveCard(boardData, source, destination);
@@ -756,13 +757,14 @@ function KanbanBoard() {
   }, [server, projectId]); // Dependencies for useEffect
 
   //add team
-  const handleTeamSubmit = async (token) => {
+  const handleTeamSubmit = async () => {
     if (!email || !team) {
       alert("Please fill in all fields");
       return;
     }
 
     try {
+      // Proceed with adding the user to the team
       const response = await fetch(
         `${server}/api/projects/${projectId}/teams/addUser`,
         {
@@ -775,21 +777,22 @@ function KanbanBoard() {
         }
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Error response:", errorText);
-        throw new Error(`Error: ${response.status} ${response.statusText}`);
-      }
-
       const data = await response.json();
 
-      if (response.ok) {
-        alert("User added to team successfully");
-        setMemberAdded(true); // Set the state to true
-        handleCloseModal();
-      } else {
-        alert(`Error: ${data.message}`);
+      if (!response.ok) {
+        // Check if the user is ADMIN based on the response from backend
+        if (data.userRole === "ADMIN") {
+          console.log("Admin email:", email);  // Log admin email
+          alert("We can't assign the admin to the project");
+        } else {
+          alert(` ${data.message}`);
+        }
+        return;
       }
+
+      alert("User added to team successfully");
+      setMemberAdded(true); // Set the state to true
+      handleCloseModal();
     } catch (error) {
       console.error("Error adding user to team:", error);
       alert("An error occurred while adding user to team");
@@ -886,12 +889,15 @@ function KanbanBoard() {
         </select>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px" }}>
-        <button
+        {canShowActions &&(
+          <button
           className="delete-card-button"
           onClick={() => confirmRemoveCard(card.columnId, card.id)}
         >
           <BsTrash />
         </button>
+      )}
+        
         <button
           className="delete-card-button"
           onClick={() =>
@@ -917,8 +923,8 @@ function KanbanBoard() {
     >
       <div>
         {renameCardModalVisible && (
-          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-3xl ">
+          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50 ">
+            <div className="bg-white p-6 rounded-3xl w-96">
               <h2 className="text-lg font-bold mb-4">Rename Card</h2>
               <form onSubmit={handleRenameCard}>
                 <div className="mb-4">
@@ -1128,12 +1134,15 @@ function KanbanBoard() {
                 >
                   {title}
                 </span>
-                <button
-                  onClick={() => openModal(id, "options")}
-                  className="text-gray-600 hover:text-gray-800"
-                >
-                  <BsThreeDotsVertical />
-                </button>
+                { canShowActions &&(
+                     <button
+                     onClick={() => openModal(id, "options")}
+                     className="text-gray-600 hover:text-gray-800"
+                   >
+                     <BsThreeDotsVertical />
+                   </button>
+                )}
+             
               </div>
               <button
                 onClick={() => openModal(id, "addCard")}
@@ -1228,7 +1237,7 @@ function KanbanBoard() {
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-3xl">
             <h2 className="text-lg font-bold mb-4">Confirm Delete</h2>
-            <p>Are you sure you want to delete this card?</p>
+            <p>Are you sure want to delete this card?</p>
             <div className="flex justify-between mt-4">
               <button
                 onClick={() => setShowDeleteConfirmation(false)}
@@ -1337,7 +1346,7 @@ function KanbanBoard() {
   <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
     <div className="bg-white p-6 rounded-3xl shadow-lg">
       <p className="text-lg font-bold mb-4">
-        Are you sure you want to remove this column?
+        Are you sure  want to remove this column?
       </p>
       <div className="flex justify-between">
         <button

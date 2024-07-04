@@ -91,6 +91,7 @@ const Projects = () => {
         }
     };
 
+
     const checkDuplicateProjectName = async (name, excludeProjectId = null) => {
         try {
             const response = await axios.get(`${server}/api/projects/${organizationId}`, {
@@ -100,7 +101,8 @@ const Projects = () => {
             });
             const existingProjects = response.data.projects;
             return existingProjects.some(project =>
-                project.name.toLowerCase() === name.toLowerCase() && project._id !== excludeProjectId
+                project.name.toLowerCase().replace(/\s+/g, '') === name.toLowerCase().replace(/\s+/g, '') &&
+                project._id !== excludeProjectId
             );
         } catch (error) {
             console.error("Error checking for duplicate project name:", error);
@@ -193,8 +195,9 @@ const Projects = () => {
             return;
         }
 
+
         // Check for duplicate project name
-        const isDuplicate = await checkDuplicateProjectName(card.name.trim());
+        const isDuplicate = await checkDuplicateProjectName(card.name);
         if (isDuplicate) {
             setNewCardErrors({ ...newErrors, name: true });
             alert("A project with this name already exists. Please choose a different name.");
@@ -222,6 +225,21 @@ const Projects = () => {
             return;
         }
 
+        // First, check the project manager's status
+        const statusResponse = await axios.get(`${server}/api/user-status`, {
+            headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            params: { email: card.projectManager },
+        });
+
+        if (statusResponse.data.status === "unverify") {
+            setNewCardErrors({ ...newErrors, email: true });
+            alert("The project manager's email is not verified. Please verify the email before creating the project.");
+            return;
+        }
+
+
         // If we've made it here, the project name is unique, email is valid and part of the organization
         try {
             const response = await axios.post(
@@ -238,6 +256,14 @@ const Projects = () => {
                     },
                 }
             );
+            const newProject = response.data.project;
+            setCards(prevCards => [
+                ...prevCards.filter(c => c._id !== card._id),
+                {
+                    ...newProject,
+                    projectManagerStatus: response.data.projectManagerStatus
+                }
+            ]);
             setEditableCard(null);
             setIsAddingCard(false);
             fetchProjects(organizationId);
@@ -246,6 +272,12 @@ const Projects = () => {
             setIsAddingCard(false);
         }
     };
+
+
+
+
+
+
 
     const handleRenameCard = (index) => {
         setRenameIndex(index);
@@ -320,8 +352,8 @@ const Projects = () => {
             return;
         }
 
-        // Check for duplicate project name
-        const isDuplicate = await checkDuplicateProjectName(renameInputValue.trim(), cards[renameIndex]._id);
+
+        const isDuplicate = await checkDuplicateProjectName(renameInputValue, cards[renameIndex]._id);
         if (isDuplicate) {
             setRenameInputError(true);
             alert("A project with this name already exists. Please choose a different name.");
@@ -481,7 +513,7 @@ const Projects = () => {
                                         }`}
                                     onClick={(e) => e.stopPropagation()}
                                 />
-                               
+                              
 
                                 {newCardErrors.email && (
                                     <span className="text-red-500">
@@ -569,6 +601,9 @@ const Projects = () => {
                                                 </span>
                                             )}
                                         </span>
+                                        {card.projectManagerStatus === 'unverify' && (
+                                            <span className="ml-2 text-yellow-500">(Unverified)</span>
+                                        )}
                                     </div>
                                 </div>
 
@@ -654,7 +689,11 @@ const Projects = () => {
                                 Project Description is required
                             </span>
                         )}
-                       
+                        {projectManagerError && (
+                            <span className="text-red-500">
+                                Project Manager Email is required
+                            </span>
+                        )}
 
                         <div className=" flex justify-between px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                             <button

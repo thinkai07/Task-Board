@@ -1,3 +1,4 @@
+//adminpannel.jsx
 import axios from "axios";
 import React, { useState, useEffect } from "react";
 import { server } from "../constant";
@@ -51,7 +52,7 @@ const AdminPanel = () => {
   }, []);
 
 
- 
+
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   };
@@ -166,54 +167,25 @@ const AdminPanel = () => {
       <table className="min-w-full divide-y bg-gray-200 divide-gray-1000">
         <thead>
           <tr>
-            <th
-              scope="col"
-              className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider"
-            >
-              Name
-            </th>
-            <th
-              scope="col"
-              className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider"
-            >
-              Email
-            </th>
-            <th
-              scope="col"
-              className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider"
-            >
-              Role
-            </th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider">Name</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider">Email</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider">Role</th>
+            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider">Status</th> {/* Add Status column */}
             {userRole === "ADMIN" && (
-              <th
-                scope="col"
-                className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider"
-              >
-                Actions
-              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-black-400 uppercase tracking-wider">Actions</th>
             )}
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {filteredData.map((item, index) => (
             <tr key={index}>
-              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">
-                {item.name}
-              </td>
-              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">
-                {item.email}
-              </td>
-              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">
-                {item.role}
-              </td>
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">{item.name}</td>
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-normal break-words max-w-xs">{item.email}</td>
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">{item.role}</td>
+              <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">{item.status}</td> {/* Display status */}
               {userRole === "ADMIN" && (
                 <td className="px-6 py-4 text-sm font-medium text-gray-600 whitespace-nowrap">
-                  <button
-                    className="px-4 py-2 bg-red-600 text-white rounded-2xl"
-                    onClick={() => confirmDeleteUser(item._id)}
-                  >
-                    Delete
-                  </button>
+                  <button className="px-4 py-2 bg-red-600 text-white rounded-2xl" onClick={() => confirmDeleteUser(item._id)}>Delete</button>
                 </td>
               )}
             </tr>
@@ -247,32 +219,26 @@ const AdminPanel = () => {
                     </h3>
                     <div className="mt-2">
                       <input
-  type="text"
-  placeholder="Name"
-  value={name}
-  onChange={(e) => {
-    let inputValue = e.target.value;
+                        type="text"
+                        placeholder="Name"
+                        value={name}
+                        onChange={(e) => {
+                          let inputValue = e.target.value;
 
-    // Trim leading spaces
-    if (inputValue.startsWith(" ")) {
-      inputValue = inputValue.trimStart();
-    }
+                          // Trim leading spaces
+                          if (inputValue.startsWith(" ")) {
+                            inputValue = inputValue.trimStart();
+                          }
 
-    // Prevent underscore (_) at the beginning
-    if (inputValue.startsWith("_")) {
-      inputValue = inputValue.substring(1); // Remove the first character if it's underscore
-    }
+                          // Allow spaces after the first character
+                          const formattedName = inputValue
+                            .replace(/^[^a-zA-Z0-9_]+/, "")
+                            .replace(/[^a-zA-Z0-9_\s]/g, "");
 
-    // Allow spaces after the first character
-    const formattedName = inputValue
-      .replace(/^[^a-zA-Z0-9\s]+/, "") // Remove non-alphanumeric characters except spaces at the beginning
-      .replace(/[^a-zA-Z0-9_\s]/g, ""); // Allow only alphanumeric characters, underscores, and spaces
-
-    setName(formattedName);
-  }}
-  className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
-/>
-
+                          setName(formattedName);
+                        }}
+                        className="mt-2 p-2 border border-gray-300 rounded-2xl w-full"
+                      />
 
                       <input
                         type="email"
@@ -280,8 +246,6 @@ const AdminPanel = () => {
                         value={email}
                         onChange={(e) => {
                           const inputValue = e.target.value;
-
-                          
                           // Remove leading spaces and other invalid characters, keeping only valid email characters
                           const cleanedEmail = inputValue.replace(/^\s+/, '').replace(/[^a-zA-Z0-9@._-]/g, '');
                           setEmail(cleanedEmail);
@@ -293,9 +257,8 @@ const AdminPanel = () => {
                             setError(null);
                           }
                         }}
-                        className={`mt-2 p-2 border ${
-                          error ? "border-red-500" : "border-gray-300"
-                        } rounded-2xl w-full`}
+                        className={`mt-2 p-2 border ${error ? "border-red-500" : "border-gray-300"
+                          } rounded-2xl w-full`}
                       />
 
                       {error && (
@@ -353,7 +316,7 @@ const AdminPanel = () => {
                     </h3>
                     <div className="mt-2">
                       <p className="text-sm text-gray-500">
-                        Are you sure you want to delete this user?
+                        Are you sure  want to delete this user?
                       </p>
                     </div>
                   </div>
@@ -384,3 +347,15 @@ const AdminPanel = () => {
 };
 
 export default AdminPanel;
+
+
+
+
+
+
+
+
+
+
+
+

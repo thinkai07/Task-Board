@@ -88,7 +88,8 @@ const userSchema = new Schema({
   role: { type: String },
   organization: { type: Schema.Types.ObjectId, ref: 'Organization' },
   createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+  updatedAt: { type: Date, default: Date.now },
+  status :{type:String, default:'unverify' }
 });
 
 // Creating models
@@ -121,7 +122,8 @@ const tempUserSchema = new Schema({
   email: String,
   password: String,
   role: { type: String },
-  organization: { type: Schema.Types.ObjectId, ref: 'TempOrganization' }
+  organization: { type: Schema.Types.ObjectId, ref: 'TempOrganization' },
+  status :{type:String}
 });
 const TempUser = mongoose.model('TempUser', tempUserSchema);
  
@@ -186,7 +188,8 @@ app.post('/register', async (req, res) => {
       email: userEmail,
       password: hashedPassword, // Save the hashed password
       organization: newOrganization._id,
-      role: 'ADMIN'
+      role: 'ADMIN',
+      status :'verified'
     });
 
     await newUser.save();
@@ -283,7 +286,8 @@ app.get('/validate-email', async (req, res) => {
         email: tempUser.email,
         password: tempUser.password,
         organization: newOrganization._id,
-        role: tempUser.role
+        role: tempUser.role,
+        status: tempUser.status
       });
 
       await newUser.save();
@@ -434,6 +438,39 @@ app.get('/api/role', authenticateToken, async (req, res) => {
 
 
 
+
+
+// Add user
+app.post('/api/addUser', authenticateToken, authorizeRoles('ADMIN'), async (req, res) => {
+  const { name, email, role } = req.body;
+
+  try {
+    if (!name || !email || !role) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const newUser = new User({
+      name,
+      email,
+      role: 'USER',
+      organization: req.user.organizationId,
+      status: 'unverify', // Set default status as 'Pending'
+    });
+
+    await newUser.save();
+
+    const token = jwt.sign({ email, role, userId: newUser._id }, secretKey, { expiresIn: '3d' });
+    const resetLink = `http://3.109.132.100/reset-password?token=${token}`;
+
+    sendResetEmail(email, resetLink);
+
+    res.status(201).json({ message: 'User added successfully', user: newUser });
+  } catch (error) {
+    console.error('Error adding user:', error);
+    res.status(500).json({ message: 'Error adding user' });
+  }
+});
+
 // Send Email Function
 const sendResetEmail = (email, link) => {
   const mailOptions = {
@@ -451,60 +488,27 @@ const sendResetEmail = (email, link) => {
     }
   });
 };
-// Add user
-app.post('/api/addUser', authenticateToken, authorizeRoles('ADMIN'), async (req, res) => {
-  const { name, email, role } = req.body;
 
-  try {
-    if (!name || !email || !role) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
-
-    const newUser = new User({
-      name,
-      email,
-      role: "USER",
-      organization: req.user.organizationId
-    });
-
-    await newUser.save();
-
-    const token = jwt.sign({ email, role, userId: newUser._id }, secretKey, { expiresIn: '3d' });
-    const resetLink = `http://3.109.132.100/reset-password?token=${token}`;
-
-    sendResetEmail(email, resetLink);
-
-    res.status(201).json({ message: 'User added successfully', user: newUser });
-  } catch (error) {
-    console.error('Error adding user:', error);
-    res.status(500).json({ message: 'Error adding user' });
-  }
-});
-//reset password
+// //reset password
 app.post('/resetPassword', async (req, res) => {
   const { token, newPassword } = req.body;
 
   try {
-    // Check if the token has already been used
     const usedToken = await UsedToken.findOne({ token });
     if (usedToken) {
       return res.status(401).json({ message: 'This reset link has already been used or expired' });
     }
 
-    // Verify the token
     const decoded = jwt.verify(token, secretKey);
 
-    // Hash the new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update the user's password
-    const user = await User.findByIdAndUpdate(decoded.userId, { password: hashedPassword }, { new: true });
+    const user = await User.findByIdAndUpdate(decoded.userId, { password: hashedPassword, status: 'Verified' }, { new: true }); // Update status to 'Verified'
 
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Mark the token as used by saving it to the database
     const newUsedToken = new UsedToken({ token });
     await newUsedToken.save();
 
@@ -518,6 +522,7 @@ app.post('/resetPassword', async (req, res) => {
     }
   }
 });
+
 
 
 
@@ -541,15 +546,22 @@ const sendEmail = (email, subject, text) => {
     }
   });
 };
-// Endpoint to create a project
+
+
+
 app.post('/api/projects', async (req, res) => {
   const { organizationId, name, description, projectManager } = req.body;
-  console.log(projectManager)
 
   try {
     const organization = await Organization.findById(organizationId);
     if (!organization) {
       return res.status(404).json({ message: 'Organization not found' });
+    }
+
+    // Check if the project manager exists and get their verification status
+    const projectManagerUser = await User.findOne({ email: projectManager });
+    if (!projectManagerUser) {
+      return res.status(404).json({ message: 'Project manager not found' });
     }
 
     const newProject = new Project({
@@ -576,13 +588,32 @@ app.post('/api/projects', async (req, res) => {
     const emailText = `Dear Project Manager,\n\nA new project has been created.\n\nProject Name: ${name}\nDescription: ${description}\n\nPlease click the following link to view the project details: ${link}\n\nBest Regards,\nTeam`;
     sendEmail(projectManager, 'New Project Created', emailText);
 
-    res.status(201).json({ message: 'Project created and email sent to project manager', project: newProject });
+    res.status(201).json({ 
+      message: 'Project created and email sent to project manager', 
+      project: newProject,
+      projectManagerStatus: projectManagerUser.status
+    });
   } catch (error) {
     console.error('Error creating project:', error);
     res.status(500).json({ message: 'Error creating project' });
   }
 });
 
+app.get('/api/user-status', async (req, res) => {
+  const { email } = req.query;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ status: user.status });
+  } catch (error) {
+    console.error('Error fetching user status:', error);
+    res.status(500).json({ message: 'Error fetching user status' });
+  }
+});
 // // Endpoint to display projects based on organization ID
 app.get('/api/projects/:organizationId', authenticateToken, async (req, res) => {
   const { organizationId } = req.params;
@@ -1112,8 +1143,56 @@ app.put('/api/cards/:cardId/move', authenticateToken, async (req, res) => {
 
 //teams related apis
 
-// Endpoint to add a user to a team based on project ID
-app.post('/api/projects/:projectId/teams/addUser', authenticateToken,async (req, res) => {
+// // // Endpoint to add a user to a team based on project ID
+
+// app.post('/api/projects/:projectId/teams/addUser', authenticateToken, async (req, res) => {
+//   const { projectId } = req.params;
+//   const { email, teamName } = req.body;
+
+//   try {
+//     const project = await Project.findById(projectId).populate('teams');
+//     if (!project) {
+//       return res.status(404).json({ message: 'Project not found' });
+//     }
+
+//     let team = project.teams.find(team => team.name === teamName);
+//     if (!team) {
+//       team = new Team({
+//         name: teamName,
+//         users: []
+//       });
+//       await team.save();
+
+//       project.teams.push(team._id);
+//       await project.save();
+//     }
+
+//     const user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(404).json({ message: 'User not found' });
+//     }
+
+//     // Check if the user has an 'ADMIN' role
+//     if (user.role === 'ADMIN') {
+//       return res.status(400).json({ message: 'Admin users cannot be added to teams' });
+//     }
+
+//     const userInTeam = team.users.find(u => u.user.toString() === user._id.toString());
+//     if (userInTeam) {
+//       return res.status(400).json({ message: 'User is already in the team' });
+//     }
+
+//     team.users.push({ user: user._id, role: 'USER' });
+//     await team.save();
+
+//     res.status(200).json({ message: 'User added to team successfully', team });
+//   } catch (error) {
+//     console.error('Error adding user to team:', error);
+//     res.status(500).json({ message: 'Error adding user to team' });
+//   }
+// });
+
+app.post('/api/projects/:projectId/teams/addUser', authenticateToken, async (req, res) => {
   const { projectId } = req.params;
   const { email, teamName } = req.body;
 
@@ -1140,6 +1219,16 @@ app.post('/api/projects/:projectId/teams/addUser', authenticateToken,async (req,
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Check if the user has an 'ADMIN' role
+    if (user.role === 'ADMIN') {
+      return res.status(400).json({ message: 'Admin users cannot be added to teams' });
+    }
+
+    // Check if the user status is 'unverify'
+    if (user.status === 'unverify') {
+      return res.status(400).json({ message: 'This user email is not verified. Please verify the email before adding into team.' });
+    }
+
     const userInTeam = team.users.find(u => u.user.toString() === user._id.toString());
     if (userInTeam) {
       return res.status(400).json({ message: 'User is already in the team' });
@@ -1154,6 +1243,7 @@ app.post('/api/projects/:projectId/teams/addUser', authenticateToken,async (req,
     res.status(500).json({ message: 'Error adding user to team' });
   }
 });
+
 
 // Endpoint to get all users under all teams based on project ID
 app.get('/api/projects/:projectId/teams/users', authenticateToken,  async (req, res) => {
