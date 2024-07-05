@@ -311,6 +311,7 @@ function KanbanBoard() {
     }
   };
 
+
   const handleEmailChange = async (e) => {
     const emailInput = e.target.value;
     setEmail(emailInput);
@@ -337,7 +338,13 @@ function KanbanBoard() {
       }
 
       const { users } = await response.json();
-      setEmailSuggestions(users);
+
+      // Filter out duplicate emails
+      const uniqueUsers = users.filter((user, index, self) =>
+        index === self.findIndex((t) => t.email === user.email)
+      );
+
+      setEmailSuggestions(uniqueUsers);
     } catch (error) {
       console.error("Error fetching email suggestions:", error);
       setEmailSuggestions([]);
@@ -688,21 +695,21 @@ function KanbanBoard() {
             },
           }
         );
-  
+
         if (!response.ok) {
           throw new Error("Failed to remove column");
         }
-  
+
         setBoardData((prevState) => ({
           ...prevState,
           columns: prevState.columns.filter(
             (column) => column.id !== selectedColumnId
           ),
         }));
-  
+
         // Show success message
         setShowDeleteSuccess(true);
-  
+
         // Hide success message after 3 seconds
         setTimeout(() => {
           setShowDeleteSuccess(false);
@@ -714,7 +721,7 @@ function KanbanBoard() {
     closeModal();
     setShowConfirmation(false);
   };
- 
+
 
   const openModal = (columnId, type) => {
     console.log(columnId);
@@ -756,6 +763,46 @@ function KanbanBoard() {
     fetchProjectDetails();
   }, [server, projectId]); // Dependencies for useEffect
 
+  // //add team
+  // const handleTeamSubmit = async (token) => {
+  //   if (!email || !team) {
+  //     alert("Please fill in all fields");
+  //     return;
+  //   }
+
+  //   try {
+  //     const response = await fetch(
+  //       `${server}/api/projects/${projectId}/teams/addUser`,
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //           Authorization: `Bearer ${localStorage.getItem('token')}`,
+  //         },
+  //         body: JSON.stringify({ email, teamName: team }),
+  //       }
+  //     );
+
+  //     if (!response.ok) {
+  //       const errorText = await response.text();
+  //       console.error("Error response:", errorText);
+  //       throw new Error(`Error: ${response.status} ${response.statusText}`);
+  //     }
+
+  //     const data = await response.json();
+
+  //     if (response.ok) {
+  //       alert("User added to team successfully");
+  //       setMemberAdded(true); // Set the state to true
+  //       handleCloseModal();
+  //     } else {
+  //       alert(`Error: ${data.message}`);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error adding user to team:", error);
+  //     alert("An error occurred while adding user to team");
+  //   }
+  // };
   //add team
   const handleTeamSubmit = async () => {
     if (!email || !team) {
@@ -785,7 +832,7 @@ function KanbanBoard() {
           console.log("Admin email:", email);  // Log admin email
           alert("We can't assign the admin to the project");
         } else {
-          alert(` ${data.message}`);
+          alert( `${data.message}`);
         }
         return;
       }
@@ -889,15 +936,15 @@ function KanbanBoard() {
         </select>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "10px" }}>
-        {canShowActions &&(
+        {canShowActions && (
           <button
-          className="delete-card-button"
-          onClick={() => confirmRemoveCard(card.columnId, card.id)}
-        >
-          <BsTrash />
-        </button>
-      )}
-        
+            className="delete-card-button"
+            onClick={() => confirmRemoveCard(card.columnId, card.id)}
+          >
+            <BsTrash />
+          </button>
+        )}
+
         <button
           className="delete-card-button"
           onClick={() =>
@@ -923,8 +970,8 @@ function KanbanBoard() {
     >
       <div>
         {renameCardModalVisible && (
-          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50 ">
-            <div className="bg-white p-6 rounded-3xl w-96">
+          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+            <div className="bg-white p-6 rounded-3xl ">
               <h2 className="text-lg font-bold mb-4">Rename Card</h2>
               <form onSubmit={handleRenameCard}>
                 <div className="mb-4">
@@ -1134,15 +1181,15 @@ function KanbanBoard() {
                 >
                   {title}
                 </span>
-                { canShowActions &&(
-                     <button
-                     onClick={() => openModal(id, "options")}
-                     className="text-gray-600 hover:text-gray-800"
-                   >
-                     <BsThreeDotsVertical />
-                   </button>
+                {canShowActions && (
+                  <button
+                    onClick={() => openModal(id, "options")}
+                    className="text-gray-600 hover:text-gray-800"
+                  >
+                    <BsThreeDotsVertical />
+                  </button>
                 )}
-             
+
               </div>
               <button
                 onClick={() => openModal(id, "addCard")}
@@ -1193,6 +1240,7 @@ function KanbanBoard() {
                 placeholder="Enter email address"
                 className="border border-gray-300 p-2 rounded-3xl w-full"
               />
+
               {emailSuggestions.length > 0 && (
                 <ul
                   className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-80 z-10"
@@ -1233,11 +1281,12 @@ function KanbanBoard() {
         </div>
       )}
 
+
       {showDeleteConfirmation && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-3xl">
             <h2 className="text-lg font-bold mb-4">Confirm Delete</h2>
-            <p>Are you sure want to delete this card?</p>
+            <p>Are you sure you want to delete this card?</p>
             <div className="flex justify-between mt-4">
               <button
                 onClick={() => setShowDeleteConfirmation(false)}
@@ -1255,13 +1304,13 @@ function KanbanBoard() {
           </div>
         </div>
       )}
-       {showDeleteSuccess && (
-    <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
-      <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
-        <p className="font-semibold">Column deleted successfully</p>
-      </div>
-    </div>
-  )}
+      {showDeleteSuccess && (
+        <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
+          <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
+            <p className="font-semibold">Column deleted successfully</p>
+          </div>
+        </div>
+      )}
       {showSuccessMessage && (
         <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
           <div className="bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg">
@@ -1341,30 +1390,30 @@ function KanbanBoard() {
             </button>
           </div>
 
-      
+
           {showConfirmation && (
-  <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-    <div className="bg-white p-6 rounded-3xl shadow-lg">
-      <p className="text-lg font-bold mb-4">
-        Are you sure  want to remove this column?
-      </p>
-      <div className="flex justify-between">
-        <button
-          onClick={handleRemoveColumn}
-          className="bg-red-500 text-white px-10 py-2 rounded-full"
-        >
-          Yes
-        </button>
-        <button
-          onClick={() => setShowConfirmation(false)}
-          className="bg-gray-300 text-gray-700 px-10 py-2 rounded-full"
-        >
-          No
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+            <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+              <div className="bg-white p-6 rounded-3xl shadow-lg">
+                <p className="text-lg font-bold mb-4">
+                  Are you sure you want to remove this column?
+                </p>
+                <div className="flex justify-between">
+                  <button
+                    onClick={handleRemoveColumn}
+                    className="bg-red-500 text-white px-10 py-2 rounded-full"
+                  >
+                    Yes
+                  </button>
+                  <button
+                    onClick={() => setShowConfirmation(false)}
+                    className="bg-gray-300 text-gray-700 px-10 py-2 rounded-full"
+                  >
+                    No
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {showRenameInput && (
             <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
               <div className="bg-white p-6 rounded-3xl h-1/3 w-4/12 shadow-lg">

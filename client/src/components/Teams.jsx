@@ -200,12 +200,12 @@ const Teams = () => {
             <div className="max-w-5xl mx-auto">
                 {/* <h1 className="text-3xl font-bold text-start mb-8">Teams</h1> */}
                 <div>
-                    <h1 className="text-3xl font-bold text-start mb-8">Project: {projectName}</h1>
-                    <div className="flex justify-between items-center">
-                        <h1 className="text-xl font-bold">Teams</h1>
-                        <h1 className="text-xl font-bold">Project Manager: {projectManager}</h1>
-                    </div>
-                </div>
+  <h1 className="text-3xl font-semibold text-start mb-8">Project: {projectName}</h1>
+  <div className="flex justify-between items-center">
+    <h1 className="text-xl font-semibold">Teams</h1>
+    <h1 className="text-xl font-semibold">Project Manager: {projectManager}</h1>
+  </div>
+</div>
                 {successMessage && (
                     <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-md mb-4 flex justify-center">
                         <p>{successMessage}</p>
