@@ -716,7 +716,7 @@ app.post("/api/projects", async (req, res) => {
 
     // Create audit log for project creation
     const auditLog = new AuditLog({
-      entityType: "Project",
+      entityType: "Project", 
       entityId: newProject._id,
       actionType: "create",
       actionDate: new Date(),
