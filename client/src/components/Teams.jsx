@@ -31,6 +31,7 @@ const Teams = () => {
                 });
                 setUser({ role: response.data.role, email: response.data.email });
                 fetchProjects(response.data.organizationId);
+                console.log(response.data.email)
 
             } catch (error) {
                 console.error("Error fetching user role:", error);
@@ -126,21 +127,23 @@ const Teams = () => {
 
     const deleteUser = async (teamName, email) => {
         try {
+            const removedBy = await fetchUserEmail(); // Fetch the logged-in user's email
+    
             await axios.delete(`${server}/api/projects/${projectId}/teams/${teamName}/users`, {
                 headers: {
                     Authorization: `Bearer ${localStorage.getItem("token")}`,
                 },
-                data: { email },
+                data: { email, removedBy },
             });
-
+    
             // Update state to reflect the changes in the UI
             setTeamMembers(prevTeamMembers => prevTeamMembers.filter(member => member.email !== email));
             setAllMembers(prevAllMembers => prevAllMembers.filter(member => member.email !== email || member.team !== teamName));
-
-            setSuccessMessage(`User ${email} successfully deleted from ${teamName}.`);
+    
+            setSuccessMessage(`User ${email} successfully deleted from ${teamName} by ${removedBy}.`);
             setShowConfirmation(false);
             setUserToDelete(null);
-
+    
             // Dismiss the success message after 3 seconds
             setTimeout(() => {
                 setSuccessMessage('');
@@ -150,7 +153,20 @@ const Teams = () => {
             // Handle error (e.g., show error message to user)
         }
     };
-
+    
+    const fetchUserEmail = async () => {
+        try {
+            const response = await axios.get(`${server}/api/user`, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+            });
+            return response.data.user.email; // Return the email
+        } catch (error) {
+            console.error("Error fetching user data:", error);
+            throw error; // Propagate the error
+        }
+    };
     const handleDeleteClick = (teamName, email) => {
         setShowConfirmation(true);
         setUserToDelete({ teamName, email });

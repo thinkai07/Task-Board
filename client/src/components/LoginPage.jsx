@@ -1,3 +1,4 @@
+//login page
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -51,6 +52,7 @@ const LoginPage = ({ onLogin }) => {
       if (response.ok) {
         localStorage.setItem('token', data.token);
         await fetchUserProfile(data.token); // Fetch user profile
+        console.log(data.token)
         onLogin(); // Call the onLogin function to update the state
         setSuccessMessage('Login successful!');
         setTimeout(() => {
@@ -167,7 +169,7 @@ const LoginPage = ({ onLogin }) => {
                 className="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
                 href="/Organization"
               >
-                Register as organization ?
+                Register ?
               </a>
               {/* <button
       className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 ease-in-out transform hover:-translate-y-1 hover:scale-105"

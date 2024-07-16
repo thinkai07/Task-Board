@@ -1,3 +1,4 @@
+//reset page
 import React, { useState } from 'react';
 import regImage from '../assets/reset.png';
 import axios from 'axios';

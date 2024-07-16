@@ -1,6 +1,7 @@
 //kanban.jsx
 import React, { useState, useRef, useEffect } from "react";
 import Board, { moveCard, moveColumn } from "@lourenci/react-kanban";
+import io from "socket.io-client";
 import {
   BsPencilSquare,
   BsThreeDotsVertical,
@@ -11,11 +12,10 @@ import "@lourenci/react-kanban/dist/styles.css";
 import { useParams } from "react-router-dom";
 import { server } from "../constant";
 import axios from "axios";
-
 import { useNavigate } from "react-router-dom";
 import "../components/Style.css";
 import useTokenValidation from "./UseTockenValidation";
-
+import { RxActivityLog } from "react-icons/rx";
 
 const initialBoard = {
   columns: [],
@@ -24,6 +24,7 @@ const initialBoard = {
 function KanbanBoard() {
   useTokenValidation();
   const [boardData, setBoardData] = useState(initialBoard);
+  const [socket, setSocket] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState(null);
   const [modalType, setModalType] = useState(null);
@@ -44,6 +45,7 @@ function KanbanBoard() {
   const [renameCardTitle, setRenameCardTitle] = useState("");
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [memberAdded, setMemberAdded] = useState(false);
+  const [commentsVisible, setCommentsVisible] = useState(true);
 
   const [renameCardDescription, setRenameCardDescription] = useState("");
   const [selectedCardId, setSelectedCardId] = useState(null);
@@ -54,22 +56,38 @@ function KanbanBoard() {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [cardToDelete, setCardToDelete] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [email, setEmail] = useState(""); //added
-  const [team, setTeam] = useState(""); //added
+  const [email, setEmail] = useState("");
+  const [team, setTeam] = useState("");
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [user, setUser] = useState({});
-  const [renameCardErrors, setRenameCardErrors] = useState({ title: '', description: '' });
-  const [addCardErrors, setAddCardErrors] = useState({ title: '', description: '', email: '' });
-
+  const [renameCardErrors, setRenameCardErrors] = useState({
+    title: "",
+    description: "",
+  });
+  const [addCardErrors, setAddCardErrors] = useState({
+    title: "",
+    description: "",
+    email: "",
+  });
+  const [assignDate, setAssignDate] = useState("");
 
   const [newColumnError, setNewColumnError] = useState(false);
+  const [comment, setComment] = useState("");
+  const [comments, setComments] = useState([]);
 
   const handleTeamsClick = () => {
     navigate(`/projects/${projectId}/teams`);
   };
 
   const [userRole, setUserRole] = useState("");
+
+  const handleSaveComment = () => {
+    if (comments.trim()) {
+      setComments((prevComments) => [...prevComments, comments]);
+      setComment("");
+    }
+  };
 
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -90,6 +108,171 @@ function KanbanBoard() {
   }, []);
 
   useEffect(() => {
+    const newSocket = io("http://localhost:3001");
+    setSocket(newSocket);
+  }, []);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on("connection", () => {
+        console.log("connected");
+      });
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    if (socket) {
+      socket.on("cardCreated", ({ taskId, card }) => {
+        setBoardData((prevState) => ({
+          ...prevState,
+          columns: prevState.columns.map((column) =>
+            column.id === taskId
+              ? { ...column, cards: [...column.cards, card] }
+              : column
+          ),
+        }));
+      });
+
+      socket.on("cardMoved", ({ cardId, sourceTaskId, destinationTaskId }) => {
+        console.log("Card moved event received:", {
+          cardId,
+          sourceTaskId,
+          destinationTaskId,
+        });
+        setBoardData((prevState) => {
+          if (!prevState || !prevState.columns) {
+            console.error("Invalid board state:", prevState);
+            return prevState;
+          }
+
+          const updatedColumns = prevState.columns.map((column) => {
+            if (column.id === sourceTaskId) {
+              return {
+                ...column,
+                cards: column.cards.filter((card) => card.id !== cardId),
+              };
+            }
+            if (column.id === destinationTaskId) {
+              const movedCard = prevState.columns
+                .find((col) => col.id === sourceTaskId)
+                ?.cards.find((card) => card.id === cardId);
+
+              if (!movedCard) {
+                console.error("Moved card not found:", {
+                  cardId,
+                  sourceTaskId,
+                });
+                return column;
+              }
+
+              return {
+                ...column,
+                cards: [...column.cards, movedCard],
+              };
+            }
+            return column;
+          });
+          return { ...prevState, columns: updatedColumns };
+        });
+      });
+
+      socket.on("cardRenamed", ({ cardId, newTitle, newDescription }) => {
+        setBoardData((prevState) => ({
+          ...prevState,
+          columns: prevState.columns.map((column) => ({
+            ...column,
+            cards: column.cards.map((card) =>
+              card.id === cardId
+                ? { ...card, title: newTitle, description: newDescription }
+                : card
+            ),
+          })),
+        }));
+      });
+
+      socket.on("taskAdded", ({ projectId: updatedProjectId, task }) => {
+        if (updatedProjectId === projectId) {
+          setBoardData((prevState) => ({
+            ...prevState,
+            columns: [
+              ...prevState.columns,
+              { id: task._id, title: task.name, cards: [] },
+            ],
+          }));
+        }
+      });
+
+      socket.on(
+        "taskRenamed",
+        ({ projectId: updatedProjectId, taskId, newName }) => {
+          if (updatedProjectId === projectId) {
+            setBoardData((prevState) => ({
+              ...prevState,
+              columns: prevState.columns.map((column) =>
+                column.id === taskId ? { ...column, title: newName } : column
+              ),
+            }));
+          }
+        }
+      );
+
+      socket.on("taskDeleted", ({ projectId: updatedProjectId, taskId }) => {
+        if (updatedProjectId === projectId) {
+          setBoardData((prevState) => ({
+            ...prevState,
+            columns: prevState.columns.filter((column) => column.id !== taskId),
+          }));
+        }
+      });
+
+      socket.on(
+        "taskMoved",
+        ({ projectId: updatedProjectId, taskId, newIndex }) => {
+          if (updatedProjectId === projectId) {
+            setBoardData((prevState) => {
+              const updatedColumns = [...prevState.columns];
+              const taskIndex = updatedColumns.findIndex(
+                (column) => column.id === taskId
+              );
+              if (taskIndex !== -1) {
+                const [movedTask] = updatedColumns.splice(taskIndex, 1);
+                updatedColumns.splice(newIndex, 0, movedTask);
+              }
+              return { ...prevState, columns: updatedColumns };
+            });
+          }
+        }
+      );
+
+      socket.on("cardDeleted", ({ taskId, cardId }) => {
+        setBoardData((prevState) => ({
+          ...prevState,
+          columns: prevState.columns.map((column) =>
+            column.id === taskId
+              ? {
+                  ...column,
+                  cards: column.cards.filter((card) => card.id !== cardId),
+                }
+              : column
+          ),
+        }));
+      });
+    }
+    return () => {
+      if (socket) {
+        socket.off("cardCreated");
+        socket.off("taskAdded");
+        socket.off("taskDeleted");
+        socket.off("taskRenamed");
+        socket.off("taskMoved");
+        socket.off("cardMoved");
+        socket.off("cardDeleted");
+        socket.off("cardRenamed");
+      }
+    };
+  }, [socket, projectId]);
+
+  useEffect(() => {
     const fetchUserRoleAndOrganization = async () => {
       try {
         const response = await axios.get(`${server}/api/role`, {
@@ -99,7 +282,6 @@ function KanbanBoard() {
         });
         setUser({ role: response.data.role, email: response.data.email });
         fetchProjects(response.data.organizationId);
-
       } catch (error) {
         console.error("Error fetching user role:", error);
       }
@@ -109,16 +291,21 @@ function KanbanBoard() {
 
   const fetchProjects = async (organizationId) => {
     try {
-      const response = await axios.get(`${server}/api/projects/${organizationId}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
+      const response = await axios.get(
+        `${server}/api/projects/${organizationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
       setProjects(response.data.projects);
-      const project = response.data.projects.find(project => project._id === projectId);
+      const project = response.data.projects.find(
+        (project) => project._id === projectId
+      );
       if (project) {
         setProjectName(project.name);
-        setProjectManager(project.projectManager)
+        setProjectManager(project.projectManager);
       }
     } catch (error) {
       console.error("Error fetching projects:", error);
@@ -127,17 +314,21 @@ function KanbanBoard() {
 
   // Function to get the user object from local storage
   const getUserFromLocalStorage = () => {
-    const user = localStorage.getItem('user');
+    const user = localStorage.getItem("user");
     return user ? JSON.parse(user) : null;
   };
 
   // Inside your component
   const userFromLocalStorage = getUserFromLocalStorage();
-  const emailFromLocalStorage = userFromLocalStorage ? userFromLocalStorage.email : null;
+  const emailFromLocalStorage = userFromLocalStorage
+    ? userFromLocalStorage.email
+    : null;
 
-  const canShowActions = userFromLocalStorage && (user.role === 'ADMIN' || emailFromLocalStorage === projects.find(project => project._id === projectId)?.projectManager);
-
-
+  const canShowActions =
+    userFromLocalStorage &&
+    (user.role === "ADMIN" ||
+      emailFromLocalStorage ===
+        projects.find((project) => project._id === projectId)?.projectManager);
 
   // Update fetchTasks function to include cards
   async function fetchTasks() {
@@ -176,11 +367,14 @@ function KanbanBoard() {
             title: task.name,
             cards: cards.map((card) => ({
               id: card.id,
-              title: card.name,
-              description: card.description,
+              title: card.name || "",
+              description: card.description || "",
               columnId: task.id,
               assignedTo: card.assignedTo,
               status: card.status,
+              assignDate: card.assignDate,
+              dueDate: card.dueDate,
+              comments: card.comments
             })),
           };
         })
@@ -200,8 +394,8 @@ function KanbanBoard() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setMemberAdded(false); // Reset the state
-    setEmail('');
-    setTeam('');
+    setEmail("");
+    setTeam("");
   };
 
   const openRenameCardModal = (
@@ -222,6 +416,7 @@ function KanbanBoard() {
     setRenameCardTitle(currentTitle);
     setRenameCardDescription(currentDescription);
     setRenameCardModalVisible(true);
+    setComments(comments || []);
   };
 
   const clearFieldsAndRefresh = async () => {
@@ -229,7 +424,7 @@ function KanbanBoard() {
     if (document.forms[0]) {
       document.forms[0].reset();
     }
-    setEmail('');
+    setEmail("");
 
     // Close the modal
     setModalVisible(false);
@@ -238,18 +433,30 @@ function KanbanBoard() {
     await fetchTasks();
   };
 
-  // // Update handleAddCard function
+  // // // Update handleAddCard function
   const handleAddCard = async (e) => {
     e.preventDefault();
-    const cardTitle = e.target.title.value.trim();
-    const cardDescription = e.target.description.value.trim();
+    const cardTitle = e.target.title.value.trim() || "";
+    const cardDescription = e.target.description.value.trim() || "";
+    const assignDate = e.target.assignDate.value;
+    const dueDate = e.target.dueDate.value;
 
-    if (!cardTitle || !cardDescription || !selectedColumnId || !email) {
-      alert("Please enter text for  card title,description and email.");
+    if (
+      !cardTitle ||
+      !cardDescription ||
+      !selectedColumnId ||
+      !email ||
+      !assignDate ||
+      !dueDate
+    ) {
+      alert("Please fill in all fields.");
       return;
     }
 
     try {
+      // Fetch the logged-in user's email
+      const createdBy = await fetchUserEmail();
+
       // Search for the user within the project's teams
       const searchResponse = await fetch(
         `${server}/api/projects/${projectId}/users/search?email=${email}`,
@@ -285,6 +492,9 @@ function KanbanBoard() {
             name: cardTitle,
             description: cardDescription,
             assignedTo: email,
+            assignDate: assignDate,
+            dueDate: dueDate,
+            createdBy: createdBy, // Include createdBy
           }),
         }
       );
@@ -295,22 +505,20 @@ function KanbanBoard() {
 
       await clearFieldsAndRefresh();
       // Clear input fields
-      e.target.title.value = '';
-      e.target.description.value = '';
-      setEmail('');
+      e.target.title.value = "";
+      e.target.description.value = "";
+      setEmail("");
 
       // Close the modal
       setModalVisible(false);
 
       // Refresh board data
       await fetchTasks();
-
     } catch (error) {
       console.error("Error adding card:", error);
       alert(error.message);
     }
   };
-
 
   const handleEmailChange = async (e) => {
     const emailInput = e.target.value;
@@ -340,8 +548,9 @@ function KanbanBoard() {
       const { users } = await response.json();
 
       // Filter out duplicate emails
-      const uniqueUsers = users.filter((user, index, self) =>
-        index === self.findIndex((t) => t.email === user.email)
+      const uniqueUsers = users.filter(
+        (user, index, self) =>
+          index === self.findIndex((t) => t.email === user.email)
       );
 
       setEmailSuggestions(uniqueUsers);
@@ -351,34 +560,35 @@ function KanbanBoard() {
     }
   };
 
-
-
-
-  //cardmove
+  // //cardmove
+  // Update handleCardMove function
   async function handleCardMove(card, source, destination) {
-    // Update the frontend state
     const updatedBoard = moveCard(boardData, source, destination);
     setBoardData(updatedBoard);
 
-    // Update the backend
+    const movedBy = await fetchUserEmail();
+
     try {
-      const response = await fetch(
-        `${server}/api/projects/${projectId}/tasks/${source.fromColumnId}/cards/${card.id}/move`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: JSON.stringify({ toColumnId: destination.toColumnId }),
-        }
-      );
+      const response = await fetch(`${server}/api/cards/${card.id}/move`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          sourceTaskId: source.fromColumnId,
+          destinationTaskId: destination.toColumnId,
+          movedBy: movedBy,
+          movedDate: new Date().toISOString(),
+        }),
+      });
 
       if (!response.ok) {
         throw new Error("Failed to move card");
       }
     } catch (error) {
       console.error("Error moving card:", error);
+      setBoardData(boardData);
     }
   }
 
@@ -409,7 +619,6 @@ function KanbanBoard() {
   }, [newColumnModalVisible, modalVisible]);
 
   // Update the handleCardMove function
-
   async function handleCardMove(card, source, destination) {
     // Update the frontend state
     const updatedBoard = moveCard(boardData, source, destination);
@@ -453,13 +662,18 @@ function KanbanBoard() {
     if (cardToDelete) {
       const { columnId, cardId } = cardToDelete;
       try {
+        // Fetch the logged-in user's email
+        const deletedBy = await fetchUserEmail();
+
         const response = await fetch(
           `${server}/api/tasks/${columnId}/cards/${cardId}`,
           {
             method: "DELETE",
             headers: {
+              "Content-Type": "application/json",
               Authorization: `Bearer ${localStorage.getItem("token")}`,
             },
+            body: JSON.stringify({ deletedBy: deletedBy }), // Include deletedBy
           }
         );
 
@@ -472,9 +686,9 @@ function KanbanBoard() {
           columns: prevState.columns.map((column) =>
             column.id === columnId
               ? {
-                ...column,
-                cards: column.cards.filter((card) => card.id !== cardId),
-              }
+                  ...column,
+                  cards: column.cards.filter((card) => card.id !== cardId),
+                }
               : column
           ),
         }));
@@ -500,24 +714,28 @@ function KanbanBoard() {
     e.preventDefault();
     const trimmedTitle = renameCardTitle.trim();
     const trimmedDescription = renameCardDescription.trim();
+    const trimmedComment = comment.trim();
     let hasErrors = false;
-    const errors = { title: '', description: '' };
-
+    const errors = { title: "", description: "" };
+  
     if (!trimmedTitle) {
-      errors.title = 'Please enter a card title';
+      errors.title = "Please enter a card title";
       hasErrors = true;
     }
     if (!trimmedDescription) {
-      errors.description = 'Please enter a card description';
+      errors.description = "Please enter a card description";
       hasErrors = true;
     }
-
+  
     if (hasErrors) {
       setRenameCardErrors(errors);
       return;
     }
-
+  
     try {
+      // Fetch the logged-in user's email
+      const updatedBy = await fetchUserEmail();
+  
       const response = await fetch(
         `${server}/api/tasks/${selectedColumnId}/cards/${selectedCardId}`,
         {
@@ -529,14 +747,17 @@ function KanbanBoard() {
           body: JSON.stringify({
             name: trimmedTitle,
             description: trimmedDescription,
+            updatedBy: updatedBy,
+            updatedDate: new Date().toISOString(), // Include updatedBy and updatedDate
+            comment: trimmedComment, // Include the comment
           }),
         }
       );
-
+  
       if (!response.ok) {
         throw new Error("Failed to rename card");
       }
-
+  
       setBoardData((prevState) => {
         const updatedColumns = prevState.columns.map((column) => {
           if (column.id === selectedColumnId) {
@@ -545,38 +766,51 @@ function KanbanBoard() {
               cards: column.cards.map((card) =>
                 card.id === selectedCardId
                   ? {
-                    ...card,
-                    title: trimmedTitle,
-                    description: trimmedDescription,
-                  }
+                      ...card,
+                      title: trimmedTitle,
+                      description: trimmedDescription,
+                      comments: comment
+                    }
                   : card
               ),
             };
           }
           return column;
         });
-
+  
         return { ...prevState, columns: updatedColumns };
       });
-
+  
       setRenameCardModalVisible(false);
-      setRenameCardErrors({ title: '', description: '' });
-
-      //added
+      setRenameCardErrors({ title: "", description: "" });
+      setComment(""); // Clear the comment field
+  
+      // Show success popup
       setShowSuccessPopup(true);
       setTimeout(() => {
         setShowSuccessPopup(false);
       }, 1000);
-
     } catch (error) {
       console.error("Error renaming card:", error);
     }
   };
+  
 
-  // Update the handleColumnMove function
   const handleColumnMove = async (column, source, destination) => {
     const updatedBoard = moveColumn(boardData, source, destination);
     setBoardData(updatedBoard);
+
+    let movedBy;
+    try {
+      movedBy = await fetchUserEmail();
+    } catch (error) {
+      console.error("Error fetching logged-in user's email:", error);
+      // Revert the frontend state in case of error
+      setBoardData(moveColumn(updatedBoard, destination, source));
+      return;
+    }
+
+    const movedDate = new Date().toISOString();
 
     try {
       const response = await fetch(
@@ -587,7 +821,11 @@ function KanbanBoard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({ newIndex: destination.toPosition }),
+          body: JSON.stringify({
+            newIndex: destination.toPosition,
+            movedBy,
+            movedDate,
+          }), // Include movedBy and movedDate
         }
       );
 
@@ -595,13 +833,25 @@ function KanbanBoard() {
     } catch (error) {
       console.error("Error moving column:", error);
       // Revert the frontend state in case of error
-      const revertedBoard = moveColumn(updatedBoard, destination, source);
-      setBoardData(revertedBoard);
+      setBoardData(moveColumn(updatedBoard, destination, source));
     }
   };
 
+  const fetchUserEmail = async () => {
+    try {
+      const response = await axios.get(`${server}/api/user`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      return response.data.user.email; // Return the email
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      throw error; // Propagate the error
+    }
+  };
 
-  // // add coloumn
+  // // update add coloumn
   const handleAddColumn = () => {
     setNewColumnError(false);
     setNewColumnModalVisible(true);
@@ -614,6 +864,14 @@ function KanbanBoard() {
       setNewColumnError(true);
       return;
     }
+    let createdBy;
+    try {
+      createdBy = await fetchUserEmail();
+      console.log(createdBy);
+    } catch (error) {
+      console.error("Error fetching logged-in user's email:", error);
+      return;
+    }
 
     try {
       const response = await fetch(
@@ -624,7 +882,10 @@ function KanbanBoard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({ name: trimmedColumnName }),
+          body: JSON.stringify({
+            name: trimmedColumnName,
+            createdBy: createdBy,
+          }),
         }
       );
 
@@ -637,7 +898,7 @@ function KanbanBoard() {
         ...prevState,
         columns: [
           ...prevState.columns,
-          { id: task._id, title: task.name, cards: [] },
+          { id: task._id, title: task.name, cards: [], createdBy: createdBy },
         ],
       }));
       setNewColumnModalVisible(false);
@@ -650,6 +911,14 @@ function KanbanBoard() {
   // Update the handleRenameColumn function
   const handleRenameColumn = async (newColumnName) => {
     if (selectedColumnId && newColumnName) {
+      let updatedBy;
+      try {
+        updatedBy = await fetchUserEmail();
+      } catch (error) {
+        console.error("Error fetching logged-in user's email:", error);
+        return;
+      }
+
       try {
         const response = await fetch(
           `${server}/api/projects/${projectId}/tasks/${selectedColumnId}`,
@@ -659,7 +928,7 @@ function KanbanBoard() {
               "Content-Type": "application/json",
               Authorization: `Bearer ${localStorage.getItem("token")}`,
             },
-            body: JSON.stringify({ name: newColumnName }),
+            body: JSON.stringify({ name: newColumnName, updatedBy: updatedBy }), // Include updatedBy
           }
         );
 
@@ -682,17 +951,26 @@ function KanbanBoard() {
     closeModal();
   };
 
-  // Update the handleRemoveColumn function
   const handleRemoveColumn = async () => {
     if (selectedColumnId) {
+      let deletedBy;
+      try {
+        deletedBy = await fetchUserEmail();
+      } catch (error) {
+        console.error("Error fetching logged-in user's email:", error);
+        return;
+      }
+
       try {
         const response = await fetch(
           `${server}/api/projects/${projectId}/tasks/${selectedColumnId}`,
           {
             method: "DELETE",
             headers: {
+              "Content-Type": "application/json",
               Authorization: `Bearer ${localStorage.getItem("token")}`,
             },
+            body: JSON.stringify({ deletedBy }), // Include deletedBy
           }
         );
 
@@ -721,7 +999,6 @@ function KanbanBoard() {
     closeModal();
     setShowConfirmation(false);
   };
-
 
   const openModal = (columnId, type) => {
     console.log(columnId);
@@ -753,8 +1030,8 @@ function KanbanBoard() {
 
         const project = await response.json();
         setProjectName(project.name);
-        console.log(project.projectManager)
-        setProjectManager(project.projectManger)
+        console.log(project.projectManager);
+        setProjectManager(project.projectManger);
       } catch (error) {
         console.error("Error fetching project details:", error);
       }
@@ -763,46 +1040,6 @@ function KanbanBoard() {
     fetchProjectDetails();
   }, [server, projectId]); // Dependencies for useEffect
 
-  // //add team
-  // const handleTeamSubmit = async (token) => {
-  //   if (!email || !team) {
-  //     alert("Please fill in all fields");
-  //     return;
-  //   }
-
-  //   try {
-  //     const response = await fetch(
-  //       `${server}/api/projects/${projectId}/teams/addUser`,
-  //       {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //           Authorization: `Bearer ${localStorage.getItem('token')}`,
-  //         },
-  //         body: JSON.stringify({ email, teamName: team }),
-  //       }
-  //     );
-
-  //     if (!response.ok) {
-  //       const errorText = await response.text();
-  //       console.error("Error response:", errorText);
-  //       throw new Error(`Error: ${response.status} ${response.statusText}`);
-  //     }
-
-  //     const data = await response.json();
-
-  //     if (response.ok) {
-  //       alert("User added to team successfully");
-  //       setMemberAdded(true); // Set the state to true
-  //       handleCloseModal();
-  //     } else {
-  //       alert(`Error: ${data.message}`);
-  //     }
-  //   } catch (error) {
-  //     console.error("Error adding user to team:", error);
-  //     alert("An error occurred while adding user to team");
-  //   }
-  // };
   //add team
   const handleTeamSubmit = async () => {
     if (!email || !team) {
@@ -811,6 +1048,9 @@ function KanbanBoard() {
     }
 
     try {
+      // Fetch the logged-in user's email
+      const addedBy = await fetchUserEmail();
+
       // Proceed with adding the user to the team
       const response = await fetch(
         `${server}/api/projects/${projectId}/teams/addUser`,
@@ -818,9 +1058,9 @@ function KanbanBoard() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem('token')}`,
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
-          body: JSON.stringify({ email, teamName: team }),
+          body: JSON.stringify({ email, teamName: team, addedBy }),
         }
       );
 
@@ -829,10 +1069,10 @@ function KanbanBoard() {
       if (!response.ok) {
         // Check if the user is ADMIN based on the response from backend
         if (data.userRole === "ADMIN") {
-          console.log("Admin email:", email);  // Log admin email
+          console.log("Admin email:", email); // Log admin email
           alert("We can't assign the admin to the project");
         } else {
-          alert( `${data.message}`);
+          alert(`${data.message}`);
         }
         return;
       }
@@ -845,7 +1085,6 @@ function KanbanBoard() {
       alert("An error occurred while adding user to team");
     }
   };
-
 
   async function handleChangeStatus(cardId, newStatus) {
     try {
@@ -902,27 +1141,62 @@ function KanbanBoard() {
     }
   };
 
-
   const renderCard = (card, { dragging }) => (
     <div
       className={`react-kanban-card ${dragging ? "dragging" : ""}`}
       style={{ borderRadius: "20px", maxWidth: "750px" }}
     >
       <div className="react-kanban-card__title truncate" title={card.title}>
-        {card.title.length > 20 ? card.title.slice(0, 28) + "..." : card.title}
+        {card.title && card.title.length > 20
+          ? card.title.slice(0, 28) + "..."
+          : card.title}
       </div>
-      <div className="react-kanban-card__description truncate" title={card.description}>
-        {card.description.length > 35 ? card.description.slice(0, 35) + "..." : card.description}
+      <div
+        className="react-kanban-card__description truncate"
+        title={card.description || ""}
+      >
+        {card.description && card.description.length > 35
+          ? card.description.slice(0, 35) + "..."
+          : card.description || ""}
       </div>
       <div className="react-kanban-card__assignedTo flex items-center justify-end">
         {card.assignedTo && (
-          <div
-            className="profile-picture w-6 h-6 rounded-full bg-blue-400 text-white flex justify-center items-center font-bold ml-2 relative group"
-          >
+          <div className="profile-picture w-6 h-6 rounded-full bg-blue-400 text-white flex justify-center items-center font-bold ml-2 relative group">
             <span className="group-hover:block hidden absolute top-8 right-0 bg-gray-800 text-white px-2 py-1 rounded text-sm whitespace-nowrap">
               {card.assignedTo}
             </span>
             {card.assignedTo.charAt(0).toUpperCase()}
+          </div>
+        )}
+      </div>
+
+      <div className="react-kanban-card__assignDate">
+        {card.assignDate && (
+          <div className="text-sm text-gray-500">
+            Assign Date:{" "}
+            {new Date(card.assignDate).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "numeric",
+              hour12: true,
+            })}
+          </div>
+        )}
+      </div>
+      <div className="react-kanban-card__dueDate">
+        {card.dueDate && (
+          <div className="text-sm text-gray-500">
+            Due Date:{" "}
+            {new Date(card.dueDate).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "numeric",
+              hour12: true,
+            })}
           </div>
         )}
       </div>
@@ -931,11 +1205,18 @@ function KanbanBoard() {
           value={card.status}
           onChange={(e) => handleChangeStatus(card.id, e.target.value)}
         >
+          <option value="pending">Pending</option>
           <option value="inprogress">Inprogress</option>
           <option value="completed">Completed</option>
         </select>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          padding: "10px",
+        }}
+      >
         {canShowActions && (
           <button
             className="delete-card-button"
@@ -961,6 +1242,7 @@ function KanbanBoard() {
       </div>
     </div>
   );
+
   ////
 
   return (
@@ -969,81 +1251,162 @@ function KanbanBoard() {
       style={{ scrollbarWidth: "none" }}
     >
       <div>
-        {renameCardModalVisible && (
-          <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
-            <div className="bg-white p-6 rounded-3xl ">
-              <h2 className="text-lg font-bold mb-4">Rename Card</h2>
-              <form onSubmit={handleRenameCard}>
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    value={renameCardTitle}
-                    onChange={(e) => {
-                      setRenameCardTitle(e.target.value);
-                      setRenameCardErrors(prev => ({ ...prev, title: '' }));
-                    }}
-                    className={`border ${renameCardErrors.title ? 'border-red-500' : 'border-gray-300'} rounded-3xl px-4 py-2 w-full`}
-                    placeholder="Card Title"
-                  />
-                  {renameCardErrors.title && <p className="text-red-500 text-sm mt-1">{renameCardErrors.title}</p>}
-                </div>
-                <div className="mb-4">
-                  <textarea
-                    value={renameCardDescription}
-                    onChange={(e) => {
-                      setRenameCardDescription(e.target.value);
-                      setRenameCardErrors(prev => ({ ...prev, description: '' }));
-                    }}
-                    className={`border ${renameCardErrors.description ? 'border-red-500' : 'border-gray-300'} rounded-3xl px-4 py-2 w-full`}
-                    placeholder="Card Description"
-                  />
-                  {renameCardErrors.description && <p className="text-red-500 text-sm mt-1">{renameCardErrors.description}</p>}
-                </div>
-                <div className="flex justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenameCardModalVisible(false);
-                      setRenameCardErrors({ title: '', description: '' });
-                    }}
-                    className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl mr-2"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="bg-blue-500 text-white px-4 py-2 rounded-3xl"
-                  >
-                    Save
-                  </button>
-                </div>
-              </form>
+      {renameCardModalVisible && (
+  <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-3xl w-5/12">
+      <h2 className="text-lg font-bold mb-4">Rename Card</h2>
+      <form onSubmit={handleRenameCard}>
+        <div className="mb-4">
+          <input
+            type="text"
+            value={renameCardTitle}
+            onChange={(e) => {
+              setRenameCardTitle(e.target.value);
+              setRenameCardErrors((prev) => ({ ...prev, title: "" }));
+            }}
+            className={`border ${
+              renameCardErrors.title ? "border-red-500" : "border-gray-300"
+            } rounded-3xl px-4 py-2 w-full`}
+            placeholder="Card Title"
+          />
+          {renameCardErrors.title && (
+            <p className="text-red-500 text-sm mt-1">
+              {renameCardErrors.title}
+            </p>
+          )}
+        </div>
+        <div className="mb-4">
+          <textarea
+            value={renameCardDescription}
+            onChange={(e) => {
+              setRenameCardDescription(e.target.value);
+              setRenameCardErrors((prev) => ({
+                ...prev,
+                description: "",
+              }));
+            }}
+            className={`border ${
+              renameCardErrors.description
+                ? "border-red-500"
+                : "border-gray-300"
+            } rounded-3xl px-4 py-2 w-full`}
+            placeholder="Card Description"
+          />
+          {renameCardErrors.description && (
+            <p className="text-red-500 text-sm mt-1">
+              {renameCardErrors.description}
+            </p>
+          )}
+        </div>
+        {/* <div className="mb-4">
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            className="border border-gray-300 rounded-3xl px-4 py-2 w-full"
+            placeholder="Write your comment"
+          />
+        </div> */}
+        <div className="flex justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setRenameCardModalVisible(false);
+              setRenameCardErrors({ title: "", description: "" });
+            }}
+            className="bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl mr-2"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="bg-blue-500 text-white px-4 py-2 rounded-3xl"
+          >
+            Save
+          </button>
+        </div>
+      </form>
+      <div className="mt-4 h-96 overflow-y-auto">
+        <div className="flex items-center mb-4 pt-6">
+          <RxActivityLog size={24} className="mr-2" />
+          <h2 className="text-lg font-bold">Activity</h2>
+          <button
+            onClick={() => setCommentsVisible(!commentsVisible)}
+            className="ml-auto bg-gray-300 text-gray-700 px-4 py-2 rounded-3xl"
+          >
+            {commentsVisible ? "Hide Comments" : "Show Comments"}
+          </button>
+        </div>
+        <div className="flex flex-col space-y-4 pt-6">
+          {/* Your activity items go here */}
+          {[] /* Add your activity items */}
+        </div>
+        <div className="mt-4">
+          <div className="flex items-center mb-2">
+            <div className="w-8 h-8 rounded-full bg-blue-400 text-white flex justify-center items-center font-bold">
+              V
             </div>
+            <input
+              type="text"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Write your comment"
+              className="border border-gray-300 rounded-3xl px-4 py-2 w-full ml-2"
+            />
           </div>
-        )}
+          <button
+            onClick={handleRenameCard}
+            className="bg-blue-500 text-white px-4 py-2 rounded-3xl mt-2"
+          >
+            Save
+          </button>
+          {commentsVisible && (
+            <div className="mt-4 flex flex-col space-y-4">
+              {comments.slice().reverse().map((cmt, idx) => (
+                <div key={idx} className={`ml-2 text-gray-700 mt-2 flex items-start ${idx === 0 ? 'bg-gray-100 p-2 rounded-lg' : 'bg-white p-2 rounded-lg'}`}>
+                  <div className={`w-8 h-8 rounded-full bg-blue-400 text-white flex justify-center items-center font-bold ${idx === 0 ? 'bg-blue-400' : ''}`}>
+                    V
+                  </div>
+                  <p className="ml-2">
+                    <span className="font-bold">Venkat</span>: {cmt}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
         {showSuccessPopup && (
           <div className="fixed top-0 left-1/2 transform -translate-x-1/2 mt-4 z-50">
             <div className="bg-green-400 p-2 rounded-xl">
-              <h2 className="text-lg text-white font-bold mb-2">Card renamed successfully</h2>
+              <h2 className="text-lg text-white font-bold mb-2">
+                Card renamed successfully
+              </h2>
             </div>
           </div>
-
         )}
       </div>
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-xl font-bold">Project : {projectName}</h1>
-          <h1 className="text-xl font-bold">Project Manager : {projectManager}</h1>
+          <h1 className="text-xl font-semibold">Project : {projectName}</h1>
+          <h1 className="text-xl font-semibold">
+            Project Manager : {projectManager}
+          </h1>
         </div>
         <div className="flex space-x-2 ">
           {canShowActions && (
             <button
               onClick={handleOpenModal}
-              className={`${memberAdded ? 'bg-gray-400' : 'bg-green-500'
-                } text-white px-4 py-2 rounded-full`}
+              className={`${
+                memberAdded ? "bg-gray-400" : "bg-green-500"
+              } text-white px-4 py-2 rounded-full`}
               disabled={memberAdded}
             >
-              {memberAdded ? 'Member Added' : '+ Add member'}
+              {memberAdded ? "Member Added" : "+ Add member"}
             </button>
           )}
           {/* added */}
@@ -1163,7 +1526,13 @@ function KanbanBoard() {
             </div>
           )}
           renderColumnHeader={({ title, id }) => (
-            <div style={{ display: "flex", flexDirection: "column", width: "300px" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                width: "300px",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -1172,24 +1541,20 @@ function KanbanBoard() {
                   marginBottom: "0.5rem",
                   padding: "0.5rem",
                   backgroundColor: "#F7FAFC",
-                  borderRadius: "20px"
+                  borderRadius: "20px",
                 }}
               >
-                <span
-                  className="truncate max-w-[200px]"
-                  title={title}
-                >
+                <span className="truncate max-w-[200px]" title={title}>
                   {title}
                 </span>
                 {canShowActions && (
                   <button
                     onClick={() => openModal(id, "options")}
-                    className="text-gray-600 hover:text-gray-800"
+                    className="text-gray-600 hover:text-gray-800 hover:bg-gray-200 focus:outline-none p-2 rounded-full"
                   >
                     <BsThreeDotsVertical />
                   </button>
                 )}
-
               </div>
               <button
                 onClick={() => openModal(id, "addCard")}
@@ -1218,29 +1583,46 @@ function KanbanBoard() {
           <div className="bg-white w-96  p-6 rounded-3xl shadow-lg">
             <h2 className="text-lg font-bold mb-4">Add New Card</h2>
             <form onSubmit={handleAddCard}>
+              <label
+                htmlFor="title"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Card Title
+              </label>
               <input
                 type="text"
                 name="title"
                 className="border border-gray-300 rounded-xl px-4 py-2 mb-4 w-full"
                 placeholder="Card Title"
                 required
-                onChange={(e) => e.target.value = e.target.value.trimStart()}
+                onChange={(e) => (e.target.value = e.target.value.trimStart())}
               />
+              <label
+                htmlFor="description"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Card Description
+              </label>
               <textarea
                 name="description"
                 className="border border-gray-300 rounded-xl px-4 py-2 mb-4 w-full"
                 placeholder="Card Description"
                 required
-                onChange={(e) => e.target.value = e.target.value.trimStart()}
+                onChange={(e) => (e.target.value = e.target.value.trimStart())}
               />
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Assigned To (Email)
+              </label>
               <input
                 type="email"
                 value={email}
                 onChange={handleEmailChange}
                 placeholder="Enter email address"
-                className="border border-gray-300 p-2 rounded-3xl w-full"
+                className="border border-gray-300 p-2 rounded-3xl w-full mb-4"
               />
-
               {emailSuggestions.length > 0 && (
                 <ul
                   className="absolute bg-white border border-gray-300 rounded-3xl mt-2 w-80 z-10"
@@ -1253,13 +1635,38 @@ function KanbanBoard() {
                         setEmail(suggestion.email);
                         setEmailSuggestions([]);
                       }}
-                      className="p-2 hover:bg-gray-200 cursor-pointer"
+                      className="p-2 hover:bg-gray-200  rounded-3xl cursor-pointer"
                     >
                       {suggestion.email}
                     </li>
                   ))}
                 </ul>
               )}
+              <label
+                htmlFor="assignDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Assigned Date
+              </label>
+              <input
+                type="datetime-local"
+                name="assignDate"
+                required
+                className="border border-gray-300 p-2 rounded-3xl w-full mb-4"
+              />
+              <label
+                htmlFor="dueDate"
+                className="block text-sm font-medium text-gray-700"
+              >
+                Due Date
+              </label>
+              <input
+                type="datetime-local"
+                name="dueDate"
+                required
+                className="border border-gray-300 p-2 rounded-3xl w-full mb-4"
+              />
+
               {/* Email suggestions list */}
               <div className="flex px-4 py-2 justify-between">
                 <button
@@ -1280,7 +1687,6 @@ function KanbanBoard() {
           </div>
         </div>
       )}
-
 
       {showDeleteConfirmation && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
@@ -1332,13 +1738,16 @@ function KanbanBoard() {
                   setNewColumnName(e.target.value.trimStart());
                   setNewColumnError(false);
                 }}
-                className={`border ${newColumnError ? 'border-red-500' : 'border-gray-300'
-                  } rounded-xl px-3 py-3 mb-4 w-full`}
+                className={`border ${
+                  newColumnError ? "border-red-500" : "border-gray-300"
+                } rounded-xl px-3 py-3 mb-4 w-full`}
                 placeholder="Column Name"
                 required
               />
               {newColumnError && (
-                <p className="text-red-500 text-sm mb-2">Please enter a column name</p>
+                <p className="text-red-500 text-sm mb-2">
+                  Please enter a column name
+                </p>
               )}
               <div className="flex justify-between">
                 <button
@@ -1390,7 +1799,6 @@ function KanbanBoard() {
             </button>
           </div>
 
-
           {showConfirmation && (
             <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
               <div className="bg-white p-6 rounded-3xl shadow-lg">
@@ -1425,12 +1833,15 @@ function KanbanBoard() {
                     setNewColumnName(e.target.value.trimStart());
                     setRenameColumnError(false);
                   }}
-                  className={`border rounded-2xl p-2 w-full mb-4 ${renameColumnError ? 'border-red-500' : 'border-gray-300'
-                    }`}
+                  className={`border rounded-2xl p-2 w-full mb-4 ${
+                    renameColumnError ? "border-red-500" : "border-gray-300"
+                  }`}
                   placeholder="Enter the new name for the column"
                 />
                 {renameColumnError && (
-                  <p className="text-red-500 text-sm mb-2">Please enter a column name</p>
+                  <p className="text-red-500 text-sm mb-2">
+                    Please enter a column name
+                  </p>
                 )}
                 <div className="flex justify-between">
                   <button

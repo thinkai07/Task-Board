@@ -5,6 +5,7 @@ import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { server } from "../constant";
 import useTokenValidation from "./UseTockenValidation";
+import dayjs from 'dayjs';
 
 
 const Projects = () => {
@@ -142,7 +143,7 @@ const Projects = () => {
         return re.test(String(email).toLowerCase());
     };
 
-
+  
 
     const handleAddCard = () => {
         if (isAddingCard) {
@@ -171,12 +172,27 @@ const Projects = () => {
         setNewCardErrors({ name: false, description: false, email: false });
     };
 
-    // savenewcard
+    const fetchUserEmail = async () => {
+        try {
+            const response = await axios.get(`${server}/api/user`, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                },
+            });
+            return response.data.user.email; // Return the email
+        } catch (error) {
+            console.error("Error fetching user data:", error);
+            throw error; // Propagate the error
+        }
+    };
+    
+      
+
     const handleSaveNewCard = async (index) => {
         const card = cards[index];
         const newErrors = { ...newCardErrors };
         let hasError = false;
-
+    
         if (!card.name.trim()) {
             newErrors.name = true;
             hasError = true;
@@ -189,13 +205,17 @@ const Projects = () => {
             newErrors.email = true;
             hasError = true;
         }
-
+        if (!card.startDate) {
+            newErrors.startDate = true;
+            hasError = true;
+        }
+      
+    
         if (hasError) {
             setNewCardErrors(newErrors);
             return;
         }
-
-
+    
         // Check for duplicate project name
         const isDuplicate = await checkDuplicateProjectName(card.name);
         if (isDuplicate) {
@@ -203,7 +223,7 @@ const Projects = () => {
             alert("A project with this name already exists. Please choose a different name.");
             return;
         }
-
+    
         // Check if email is part of the organization
         try {
             const response = await axios.get(`${server}/api/users/search`, {
@@ -212,7 +232,7 @@ const Projects = () => {
                 },
                 params: { email: card.projectManager, organizationId: organizationId },
             });
-
+    
             if (response.data.users.length === 0) {
                 setNewCardErrors({ ...newErrors, email: true });
                 setProjectManagerError(true);
@@ -224,22 +244,31 @@ const Projects = () => {
             setProjectManagerError(true);
             return;
         }
-
-        // First, check the project manager's status
+    
+        // Check the project manager's status
         const statusResponse = await axios.get(`${server}/api/user-status`, {
             headers: {
                 Authorization: `Bearer ${localStorage.getItem("token")}`,
             },
             params: { email: card.projectManager },
         });
-
-        if (statusResponse.data.status === "unverify") {
+    
+        if (statusResponse.data.status === "unverified") {
             setNewCardErrors({ ...newErrors, email: true });
             alert("The project manager's email is not verified. Please verify the email before creating the project.");
             return;
         }
-
-
+    
+        // Fetch the logged-in user's email
+        let createdBy;
+        try {
+            createdBy = await fetchUserEmail();
+        } catch (error) {
+            setNewCardErrors({ ...newErrors, createdBy: true });
+            alert("Error fetching logged-in user's email. Please try again.");
+            return;
+        }
+    
         // If we've made it here, the project name is unique, email is valid and part of the organization
         try {
             const response = await axios.post(
@@ -249,6 +278,9 @@ const Projects = () => {
                     name: card.name.trim(),
                     description: card.description.trim(),
                     projectManager: card.projectManager,
+                    startDate: card.startDate,
+                   
+                    createdBy: createdBy
                 },
                 {
                     headers: {
@@ -272,8 +304,19 @@ const Projects = () => {
             setIsAddingCard(false);
         }
     };
+    
+    
+    
 
 
+    const handleDateChange = (event, index, field) => {
+        setCards((prevCards) => {
+            const updatedCards = [...prevCards];
+            updatedCards[index][field] = event.target.value;
+            return updatedCards;
+        });
+    };
+    
 
 
 
@@ -334,7 +377,6 @@ const Projects = () => {
         setShowTooltipIndex(index);
     };
 
-    //save rename
     const handleSaveRename = async () => {
         if (!renameInputValue) {
             setRenameInputError(true);
@@ -351,15 +393,23 @@ const Projects = () => {
         if (projectManagerError) {
             return;
         }
-
-
+    
+        // Check if the user's email can be fetched
+        let updatedBy;
+        try {
+            updatedBy = await fetchUserEmail();
+        } catch (error) {
+            console.error("Error fetching logged-in user's email:", error);
+            return;
+        }
+    
         const isDuplicate = await checkDuplicateProjectName(renameInputValue, cards[renameIndex]._id);
         if (isDuplicate) {
             setRenameInputError(true);
             alert("A project with this name already exists. Please choose a different name.");
             return;
         }
-
+    
         try {
             const response = await axios.put(
                 `${server}/api/projects/${cards[renameIndex]._id}`,
@@ -367,6 +417,7 @@ const Projects = () => {
                     name: renameInputValue,
                     description: descriptionInputValue,
                     projectManager: projectManager,
+                    updatedBy: updatedBy // Include updatedBy here
                 },
                 {
                     headers: {
@@ -374,13 +425,13 @@ const Projects = () => {
                     },
                 }
             );
-
+    
             const updatedProject = response.data.project;
-
+    
             setCards(prevCards => prevCards.map(card =>
                 card._id === updatedProject._id ? updatedProject : card
             ));
-
+    
             setRenameDialogVisible(false);
             setRenameIndex(null);
             setShowTooltipIndex(null);
@@ -388,6 +439,7 @@ const Projects = () => {
             console.error("Error renaming project:", error);
         }
     };
+    
 
     const handleProjectManagerChange = async (event) => {
         const value = event.target.value;
@@ -513,6 +565,16 @@ const Projects = () => {
                                         }`}
                                     onClick={(e) => e.stopPropagation()}
                                 />
+                                 <label className="block text-gray-700 text-sm font-bold mb-2">Start Date</label>
+        <input
+            type="date"
+            value={card.startDate}
+            onChange={(event) => handleDateChange(event, index, 'startDate')}
+            className={`shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline ${newCardErrors.startDate ? "border-red-500" : ""}`}
+        />
+        {newCardErrors.startDate && <span className="text-red-500">Start date is required</span>}
+
+       
                               
 
                                 {newCardErrors.email && (
@@ -566,46 +628,53 @@ const Projects = () => {
                         ) : (
                             <>
                                 <div onClick={() => handleCardClick(card._id)}>
-                                    <div className="relative group">
-                                        <span className="block truncate max-w-[200px]">
-                                            {card.name}
-                                        </span>
-                                        {card.name.length > 20 && (
-                                            <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
-                                                {card.name}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="relative group mt-2">
-                                        <span className="block truncate max-w-[200px] text-gray-500">
-                                            {card.description}
-                                        </span>
-                                        {card.description.length > 20 && (
-                                            <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
-                                                {card.description}
-                                            </span>
-                                        )}
-                                    </div>
+  <div className="relative group">
+    <span className="block truncate max-w-[200px]">
+      {card.name}
+    </span>
+    {card.name.length > 20 && (
+      <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
+        {card.name}
+      </span>
+    )}
+  </div>
+  <div className="relative group mt-2">
+    <span className="block truncate max-w-[200px] text-gray-500">
+      {card.description}
+    </span>
+    {card.description.length > 20 && (
+      <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 -mt-1 ml-14">
+        {card.description}
+      </span>
+    )}
+    <div className="flex items-center justify-between mt-2">
+      <div>
+        <p className="text-gray-500 text-sm">Start Date</p>
+        <p className="font-medium">{dayjs(card.startDate).format('DD, MMM YYYY')}</p>
+      </div>
+   
+    </div>
+  </div>
+  <div className="flex items-center mt-2">
+    <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center rounded-full">
+      {card.projectManager.charAt(0).toUpperCase()}
+    </div>
+    <span className="ml-2 text-gray-700 relative group">
+      {card.projectManager.length > 20
+        ? card.projectManager.substring(0, 20) + '...'
+        : card.projectManager}
+      {card.projectManager.length > 20 && (
+        <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 left-0 mt-1">
+          {card.projectManager}
+        </span>
+      )}
+    </span>
+    {card.projectManagerStatus === 'unverify' && (
+      <span className="ml-2 text-yellow-500">(Unverified)</span>
+    )}
+  </div>
+</div>
 
-                                    <div className="flex items-center mt-2">
-                                        <div className="w-8 h-8 bg-blue-600 text-white flex items-center justify-center rounded-full">
-                                            {card.projectManager.charAt(0).toUpperCase()}
-                                        </div>
-                                        <span className="ml-2 text-gray-700 relative group">
-                                            {card.projectManager.length > 20
-                                                ? card.projectManager.substring(0, 20) + '...'
-                                                : card.projectManager}
-                                            {card.projectManager.length > 20 && (
-                                                <span className="absolute hidden group-hover:block bg-black text-white p-2 rounded z-10 left-0 mt-1">
-                                                    {card.projectManager}
-                                                </span>
-                                            )}
-                                        </span>
-                                        {card.projectManagerStatus === 'unverify' && (
-                                            <span className="ml-2 text-yellow-500">(Unverified)</span>
-                                        )}
-                                    </div>
-                                </div>
 
                                 <div className="absolute top-0 right-0 p-2">
                                     {userRole !== "USER" && (

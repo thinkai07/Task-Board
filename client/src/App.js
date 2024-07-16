@@ -15,6 +15,9 @@ import ResetPassword from './components/ResetPassword';
 import KanbanBoard from './components/KanbanBoard';
 import Teams from './components/Teams';
 import SuccessPage from './components/SuccessPage';
+import Calendar from './components/Calendar';
+import AuditLog from './components/Auditlog';
+
 
 
 
@@ -76,10 +79,12 @@ const App = () => {
                   <Route path='/tasks' element={<TasksPage user={user} />} /> 
                   <Route path='/members' element={<AdminPanel />} /> 
                   <Route path="/projects/:projectId/teams" element={<Teams/>} />
-                  
+                  <Route path='/calendar' element={<Calendar />} />
+                  <Route path="/projects/:projectId/view" element={<KanbanBoard user={user} />} />
+                  <Route path="/Auditlog" element={<AuditLog/>} /> 
                 </Routes>
               </Layout>
-            ) : (
+            ) : ( 
               <Navigate to="/login" />
             )
           }

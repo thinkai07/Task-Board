@@ -1,3 +1,4 @@
+//organization
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -89,7 +90,7 @@ const Organization = () => {
     <div className="flex min-h-screen items-center justify-center bg-gray-300">
       <div className="w-screen max-w-5xl rounded-3xl overflow-hidden shadow-lg flex">
         <div className="w-full md:w-1/2 bg-white p-8 flex flex-col justify-center">
-          <h1 className="text-4xl font-bold mb-6">Create Organization</h1>
+          <h1 className="text-4xl font-bold mb-6">Register</h1>
           {error && <div className="text-red-500 mb-4">{error}</div>}
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
